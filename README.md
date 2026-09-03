@@ -1,0 +1,150 @@
+# ics-gen
+
+A dependency-free **iCalendar (.ics) generator that runs entirely in the browser** — built for static-site hosting. No server, no build step, no API keys, no third-party requests.
+
+- Generate `.ics` files with a few lines of plain JavaScript
+- Download them with a Blob URL (works on `file://` too)
+- Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
+
+## Is this possible on a static site? Yes.
+
+An `.ics` file is just plain text (RFC 5545). Nothing about generating it requires a backend: the JavaScript runs in the visitor's browser, builds the text, and hands it to the browser as a downloadable file. A static host only needs to serve HTML/JS/CSS — the same files you already use for any static site.
+
+The only things a static host *can't* do are server-side tasks — e.g. emailing invites on your behalf. Mitigations are included: attendees can be attached as `mailto:` entries (your mail client handles the invite), and a hosted `calendar.ics` file URL can be shared for import/subscribe.
+
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `ics.js` | The generator library (also usable as a Node module). No dependencies. |
+| `index.html` | A self-contained demo app: form → events list → download. |
+| `styles.css` | Styling for the demo app. |
+| `README.md` | This file. |
+
+## Quick start
+
+1. Open `index.html` in any modern browser (double-clicking works — there is no build step).
+2. Fill in an event and click **Add to calendar**.
+3. Click **Download .ics**, then import the file:
+   - Google Calendar → Settings → **Import & export** → select the file.
+   - Outlook → **File → Open & Export → Import/Export** (or drag it in Outlook 365).
+   - Apple Calendar → **File → Import**.
+
+Try the **Load sample events** button to see recurrence, all-day, attendees, and reminders working.
+
+## Hosting on any static site
+
+Because there is no build step, deploy the folder as-is:
+
+**GitHub Pages** — push the repo, then *Settings → Pages → Deploy from a branch* and choose a branch + `/ (root)`. You can publish any branch — including a feature branch like `first-branch` — which fits a "never work directly on main" workflow: ship the feature from its branch for review, then switch Pages (or the branch it publishes) to `main` after merge.
+
+**Netlify Drop** — drag the folder onto <https://app.netlify.com/drop>. Done.
+
+**Vercel** — `npx vercel` in the folder: pick "Other" as the framework, leave the build command empty, output directory `.`.
+
+**Cloudflare Pages** — *Direct Upload* → drag the folder, or connect the Git repo with no build command.
+
+**S3 + CloudFront / nginx / any file host** — upload the files and serve them. Serve `.ics` with `Content-Type: text/calendar` if you want users to subscribe to a shared `calendar.ics` URL (GitHub Pages, Netlify, and Cloudflare Pages already map `.ics` correctly).
+
+**Local preview** — `npx serve .` or `python3 -m http.server 8080`, or just open `index.html` directly.
+
+## Using the generator in your own page
+
+Copy `ics.js` next to your page, include it, and generate on demand:
+
+```html
+<script src="ics.js"></script>
+<button onclick="addWebinarToCalendar()">Add webinar to my calendar</button>
+<script>
+  function addWebinarToCalendar() {
+    const cal = new IcsGenerator.Calendar({ name: 'Company events' });
+    cal.addEvent({
+      title: 'Product webinar',
+      start: new Date('2026-02-10T17:00:00Z'),   // instant; emitted as UTC
+      durationMinutes: 60,
+      location: 'Online',
+      description: 'Q&A with the team',
+      categories: ['Webinar'],
+      rrule: 'FREQ=WEEKLY;COUNT=4',
+      alarms: [{ trigger: -15 }],                // 15 minutes before
+      attendees: [{ email: 'you@example.com' }]
+    });
+    IcsGenerator.download('webinar.ics', cal.toString());
+  }
+</script>
+```
+
+It works as a Node module for scripts/CI checks too:
+
+```js
+const IcsGenerator = require('./ics.js');
+```
+
+## API reference
+
+Everything lives on the `IcsGenerator` global (or the Node `module.exports`).
+
+### `new IcsGenerator.Calendar(options)`
+
+| Option | Type | Notes |
+| --- | --- | --- |
+| `name` | `string` | Sets `X-WR-CALNAME` — the calendar title shown by Google/Apple. |
+| `desc` | `string` | Sets `X-WR-CALDESC`. |
+
+Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `boolean` · `clear()` · `toString()` → full `.ics` text · `.events` array.
+
+### `cal.addEvent(options)`
+
+| Option | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `title` | `string` | ✅ | Emitted as `SUMMARY`. Must be non-empty. |
+| `start` | `Date` or `{year, month, day}` | ✅ | `Date` for timed events (emitted UTC). The object form forces an all-day event and is timezone-safe. |
+| `end` | `Date` or `{year, month, day}` | | Timed: exclusive end instant. All-day: **exclusive** per RFC 5545 — omit it to get start + 1 day. |
+| `durationMinutes` | `number` | | Used to compute `end` when no `end` is given (timed events). |
+| `allDay` | `boolean` | | Forces `VALUE=DATE` output (implied by the `{year, month, day}` start). |
+| `timezone` | `string` | | IANA name, e.g. `America/New_York`. Emits `DTSTART;TZID=…` with wall-clock time. |
+| `uid` | `string` | | Defaults to a random UUID. Set it to keep stable identity across regenerations (important for updates). |
+| `description` | `string` | | `DESCRIPTION`. |
+| `location` | `string` | | `LOCATION`. |
+| `url` | `string` | | `URL` (URI value, not text-escaped). |
+| `status` | `string` | | `CONFIRMED` / `TENTATIVE` / `CANCELLED`. |
+| `categories` | `string[]` | | `CATEGORIES`. |
+| `rrule` | `string` | | Raw rule, e.g. `FREQ=WEEKLY;BYDAY=MO,WE,FR` or `FREQ=MONTHLY;COUNT=6`. |
+| `alarms` | `Array<{trigger, description?, action?}>` | | `trigger` is a minute number (`-15`) or an ISO 8601 duration string (`-PT30M`). `description` defaults to the event title. Emits a `VALARM:DISPLAY`. |
+| `attendees` | `Array<{email, name?, role?, status?, rsvp?}>` | | Emitted as `ATTENDEE;CN=…;ROLE=…;PARTSTAT=…:mailto:…`. |
+| `organizer` | `{email, name?}` | | Emitted as `ORGANIZER;CN=…:mailto:…`. |
+
+### `IcsGenerator.download(filename, text)`
+
+Builds a Blob and triggers a file download in the browser. Pure client-side.
+
+### Helpers
+
+`escapeText()`, `foldLines()`, `formatDateTimeUTC(date)`, `formatDateUTC(dateOrParts)` — exported for your own tooling.
+
+## What the generator emits
+
+- **RFC 5545 line endings**: every line ends in `CRLF`.
+- **Escaping**: `\`, `;`, `,` and newlines in text values are escaped (`,`/`;` in parameter values too).
+- **Line folding**: no line exceeds 75 characters; continuations are space-prefixed — Outlook and Exchange can reject long unfolded lines.
+- **Timestamps**: times are emitted as UTC (`…Z`) by default; use `timezone` for a `TZID`-flavored wall-clock value. `DTSTAMP` is always UTC (required).
+- **All-day events**: `DTSTART;VALUE=DATE` / `DTEND;VALUE=DATE`. The end is exclusive, so an event on Jan 5 defaults to `DTEND` Jan 6.
+- **Recurrence**: `RRULE` passthrough; when you provide a `UNTIL` date with a timed event, use UTC (`UNTIL=20260301T235959Z`), or date-only for all-day.
+- **Calendar metadata**: `PRODID`, `VERSION:2.0`, `CALSCALE:GREGORIAN`, `METHOD:PUBLISH`, optional `X-WR-CALNAME`.
+- **Reminders**: `BEGIN:VALARM / ACTION:DISPLAY / TRIGGER:-PT15M / END:VALARM`.
+
+## Validating your output
+
+- Paste the preview (or **Copy .ics**) into the validator at <https://icalendar.org/validator.html>.
+- Import into Google Calendar / Outlook / Apple Calendar and check: special characters (`;` `,` `\` `&`), multi-line descriptions, a >75-char description (folding), an all-day multi-day event, a recurring event, and a timezone event.
+
+## Limitations
+
+- **Modern browsers** are assumed (Blob, `Intl.DateTimeFormat`, `Array.from`, classes). No IE support.
+- **No persistence** on a static host — fine for generating downloads, not for user accounts.
+- **No server-side invitations** — attendees are `mailto:` links; the sender's mail client handles them.
+- `TZID` is emitted **without** an accompanying `VTIMEZONE` component. Google/Outlook/Apple resolve IANA names client-side, which works in practice; if you need a strictly self-contained file (e.g. offline-only clients), add a `VTIMEZONE` block.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
