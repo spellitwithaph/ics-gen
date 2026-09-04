@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>ics-gen — client-side .ics generator</title>
+<!-- Empty data: favicon suppresses the default /favicon.ico request (no 404
+     noise on static hosts, fully offline). If you ever add a real favicon
+     file, extend img-src in the CSP above accordingly (it is data: only). -->
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="styles.css">
 </head>

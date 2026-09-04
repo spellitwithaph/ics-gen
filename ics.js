@@ -6,13 +6,13 @@
  * server, no build step, no API keys.
  *
  * Generates RFC 5545 compliant output: CRLF line endings, text escaping,
- * 75-char line folding, UTC or TZID timestamps, all-day events (with the RFC's
+ * 75-octet line folding, UTC or TZID timestamps, all-day events (with the RFC's
  * exclusive DTEND), recurrence rules, attendees, and VALARM reminders.
  *
  * Security: TEXT values are escaped per RFC 5545, and every single-line value
- * (URLs, emails, rules, status/role/action tokens, triggers) rejects control
- * characters, so untrusted input cannot inject extra lines into the generated
- * .ics file. URLs are restricted to absolute http(s) links.
+ * (URLs, emails, rules, time zones, status/role/action tokens, triggers)
+ * rejects control characters, so untrusted input cannot inject extra lines
+ * into the generated .ics file. URLs are restricted to absolute http(s) links.
  *
  * Usage:
  *   <script src="ics.js"></script>
@@ -95,20 +95,36 @@
 
   /*
    * RFC 5545 §3.1 — no content line may exceed 75 octets; longer lines are
-   * "folded" by splitting at 75 characters and prefixing each continuation
-   * line with a single space. We split on code points so multi-byte
-   * characters (emoji, accents) are never torn in half.
+   * folded at 75-octet boundaries and each continuation line is prefixed with
+   * a single space. Folding is UTF-8-octet aware and never splits a multi-byte
+   * code point (emoji, accents).
    */
+  function utf8ByteLen(cp) {
+    if (cp < 0x80) return 1;
+    if (cp < 0x800) return 2;
+    if (cp < 0x10000) return 3;
+    return 4;
+  }
+
   function foldLines(text) {
     var out = [];
     var lines = String(text).split(/\r\n|\r|\n/);
     for (var i = 0; i < lines.length; i++) {
-      var chars = Array.from(lines[i]);
-      while (chars.length > 75) {
-        out.push(chars.slice(0, 75).join(''));
-        chars = [' '].concat(chars.slice(75));
+      var cps = Array.from(lines[i]);
+      var line = '';
+      var octets = 0;
+      for (var j = 0; j < cps.length; j++) {
+        var b = utf8ByteLen(cps[j].codePointAt(0));
+        if (line && octets + b > 75) {
+          out.push(line);
+          line = ' ' + cps[j];
+          octets = 1 + b;
+        } else {
+          line += cps[j];
+          octets += b;
+        }
       }
-      out.push(chars.join(''));
+      out.push(line);
     }
     return out.join(CRLF);
   }
@@ -183,7 +199,7 @@
     );
   }
 
-  /* Accepts '-PT15M' (string) or a number of minutes, e.g. 15 → '-PT15M', 15 days → -21600. */
+  /* Number of minutes (e.g. 15 → '-PT15M') or an ISO 8601 duration string (e.g. '-PT30M'). */
   function normalizeTrigger(trigger) {
     if (typeof trigger === 'number') {
       return (trigger <= 0 ? '-PT' : 'PT') + Math.abs(trigger) + 'M';
@@ -265,6 +281,7 @@
    */
   function validateEventOptions(options) {
     if (options.url) sanitizeUrl(options.url);
+    if (options.timezone) rejectControlChars(String(options.timezone), 'event "timezone"');
     if (options.rrule) rejectControlChars(String(options.rrule), 'event "rrule"');
     if (options.status) rejectControlChars(String(options.status), 'event "status"');
     (options.alarms || []).forEach(function (alarm) {
@@ -313,6 +330,7 @@
   VEvent.prototype.toLines = function () {
     var o = this.options;
     var tz = o.timezone;
+    if (tz) rejectControlChars(tz, 'event "timezone"');
     var lines = ['BEGIN:VEVENT'];
 
     lines.push('UID:' + this.uid);

@@ -109,7 +109,7 @@ Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `bo
 | `end` | `Date` or `{year, month, day}` | | Timed: exclusive end instant. All-day: **exclusive** per RFC 5545 — omit it to get start + 1 day. |
 | `durationMinutes` | `number` | | Used to compute `end` when no `end` is given (timed events). |
 | `allDay` | `boolean` | | Forces `VALUE=DATE` output (implied by the `{year, month, day}` start). |
-| `timezone` | `string` | | IANA name, e.g. `America/New_York`. Emits `DTSTART;TZID=…` with wall-clock time. |
+| `timezone` | `string` | | IANA name, e.g. `America/New_York`. Emits `DTSTART;TZID=…` with wall-clock time. Control characters are rejected. |
 | `uid` | `string` | | Defaults to a random UUID. Set it to keep stable identity across regenerations (important for updates). |
 | `description` | `string` | | `DESCRIPTION`. |
 | `location` | `string` | | `LOCATION`. |
@@ -134,7 +134,7 @@ Builds a Blob and triggers a file download in the browser. Pure client-side.
 - **RFC 5545 line endings**: every line ends in `CRLF`.
 - **Escaping**: `\`, `;`, `,` and newlines in text values are escaped (`,`/`;` in parameter values too); remaining C0 control characters are stripped from TEXT values.
 - **Input hardening**: single-line values (URLs, emails, rules, status/role/action tokens, triggers) reject control characters, so untrusted input cannot inject extra lines into the generated `.ics`; `URL` is restricted to absolute http(s) links.
-- **Line folding**: no line exceeds 75 characters; continuations are space-prefixed — Outlook and Exchange can reject long unfolded lines.
+- **Line folding**: no line exceeds 75 octets (RFC 5545 §3.1); continuations are space-prefixed — Outlook and Exchange can reject long unfolded lines.
 - **Timestamps**: times are emitted as UTC (`…Z`) by default; use `timezone` for a `TZID`-flavored wall-clock value. `DTSTAMP` is always UTC (required).
 - **All-day events**: `DTSTART;VALUE=DATE` / `DTEND;VALUE=DATE`. The end is exclusive, so an event on Jan 5 defaults to `DTEND` Jan 6.
 - **Recurrence**: `RRULE` passthrough; when you provide a `UNTIL` date with a timed event, use UTC (`UNTIL=20260301T235959Z`), or date-only for all-day.
@@ -159,8 +159,8 @@ do not apply. What does apply is the client-side half of the industry guidance
 - **Input validation** *(OWASP Top 10:2025 A05-Injection — which includes XSS,
   30k+ CVEs; OWASP Input Validation Cheat Sheet)* — validation happens as early
   as possible in the data flow, at the `IcsGenerator` boundary: single-line
-  values (URLs, emails, recurrence rules, status/role/action tokens, alarm
-  triggers) reject control characters (CR/LF line injection); `URL` is
+  values (URLs, emails, recurrence rules, time zones, status/role/action
+  tokens, alarm triggers) reject control characters (CR/LF line injection); `URL` is
   restricted to absolute `http(s)` links (no `javascript:`/`data:` schemes);
   attendee/organizer `mailto:` emails are format-checked.
 - **Output encoding, never raw HTML** *(OWASP XSS Prevention / DOM-based XSS

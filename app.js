@@ -118,8 +118,7 @@
     var loc = $('location').value.trim();
     if (loc) opts.location = loc;
     var url = $('url').value.trim();
-    /* Friendly touch: a bare "example.com/agenda" becomes https://…; anything
-     * with a non-http(s) scheme (javascript:, data:, …) is rejected by ics.js. */
+    /* Bare "example.com/agenda" → https://…; other schemes are rejected by ics.js. */
     if (url && !/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url;
     if (url) opts.url = url;
     var cats = $('categories').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
