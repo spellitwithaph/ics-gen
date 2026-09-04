@@ -6,7 +6,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Download them with a Blob URL (works on `file://` too)
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
-> **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go - 2026-09-04  
+> **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
 > **Last updated:** `2026-09-04` (ISO 8601)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
