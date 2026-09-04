@@ -106,13 +106,13 @@ Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `bo
 | `uid` | `string` | | Defaults to a random UUID. Set it to keep stable identity across regenerations (important for updates). |
 | `description` | `string` | | `DESCRIPTION`. |
 | `location` | `string` | | `LOCATION`. |
-| `url` | `string` | | `URL` (URI value, not text-escaped). |
+| `url` | `string` | | `URL` — must be an absolute http(s) link; other schemes (`javascript:`, `data:`, …) are rejected, and values containing control characters throw. |
 | `status` | `string` | | `CONFIRMED` / `TENTATIVE` / `CANCELLED`. |
 | `categories` | `string[]` | | `CATEGORIES`. |
-| `rrule` | `string` | | Raw rule, e.g. `FREQ=WEEKLY;BYDAY=MO,WE,FR` or `FREQ=MONTHLY;COUNT=6`. |
-| `alarms` | `Array<{trigger, description?, action?}>` | | `trigger` is a minute number (`-15`) or an ISO 8601 duration string (`-PT30M`). `description` defaults to the event title. Emits a `VALARM:DISPLAY`. |
-| `attendees` | `Array<{email, name?, role?, status?, rsvp?}>` | | Emitted as `ATTENDEE;CN=…;ROLE=…;PARTSTAT=…:mailto:…`. |
-| `organizer` | `{email, name?}` | | Emitted as `ORGANIZER;CN=…:mailto:…`. |
+| `rrule` | `string` | | Raw rule, e.g. `FREQ=WEEKLY;BYDAY=MO,WE,FR` or `FREQ=MONTHLY;COUNT=6`. Rejected if it contains control characters (CR/LF injection). |
+| `alarms` | `Array<{trigger, description?, action?}>` | | `trigger` is a minute number (`-15`) or an ISO 8601 duration string (`-PT30M`). `description` defaults to the event title. Emits a `VALARM:DISPLAY`. Any value containing control characters throws. |
+| `attendees` | `Array<{email, name?, role?, status?, rsvp?}>` | | Emitted as `ATTENDEE;CN=…;ROLE=…;PARTSTAT=…:mailto:…`. `email` is validated (non-empty local part + dotted domain, no whitespace); `name`, `role` and `status` must not contain control characters. |
+| `organizer` | `{email, name?}` | | Emitted as `ORGANIZER;CN=…:mailto:…`. `email` validated as above. |
 
 ### `IcsGenerator.download(filename, text)`
 
@@ -125,7 +125,8 @@ Builds a Blob and triggers a file download in the browser. Pure client-side.
 ## What the generator emits
 
 - **RFC 5545 line endings**: every line ends in `CRLF`.
-- **Escaping**: `\`, `;`, `,` and newlines in text values are escaped (`,`/`;` in parameter values too).
+- **Escaping**: `\`, `;`, `,` and newlines in text values are escaped (`,`/`;` in parameter values too); remaining C0 control characters are stripped from TEXT values.
+- **Input hardening**: single-line values (URLs, emails, rules, status/role/action tokens, triggers) reject control characters, so untrusted input cannot inject extra lines into the generated `.ics`; `URL` is restricted to absolute http(s) links.
 - **Line folding**: no line exceeds 75 characters; continuations are space-prefixed — Outlook and Exchange can reject long unfolded lines.
 - **Timestamps**: times are emitted as UTC (`…Z`) by default; use `timezone` for a `TZID`-flavored wall-clock value. `DTSTAMP` is always UTC (required).
 - **All-day events**: `DTSTART;VALUE=DATE` / `DTEND;VALUE=DATE`. The end is exclusive, so an event on Jan 5 defaults to `DTEND` Jan 6.
@@ -143,6 +144,7 @@ Builds a Blob and triggers a file download in the browser. Pure client-side.
 - **Modern browsers** are assumed (Blob, `Intl.DateTimeFormat`, `Array.from`, classes). No IE support.
 - **No persistence** on a static host — fine for generating downloads, not for user accounts.
 - **No server-side invitations** — attendees are `mailto:` links; the sender's mail client handles them.
+- **Content-Security-Policy**: `index.html` ships a strict meta CSP (`default-src 'none'`, `script-src 'self'`, no inline script). `file:` sources are explicitly allowed so double-clicking `index.html` keeps working on every browser (scheme `'self'` cannot match local files). Works unchanged on `file://` in Chromium and Firefox. If you ever add inline handlers or external resources, adjust the meta tag or move the policy to response headers (Netlify `_headers`, Cloudflare `_headers`, nginx `add_header`, …). GitHub Pages cannot send custom headers, so the meta tag is the enforcement there.
 - `TZID` is emitted **without** an accompanying `VTIMEZONE` component. Google/Outlook/Apple resolve IANA names client-side, which works in practice; if you need a strictly self-contained file (e.g. offline-only clients), add a `VTIMEZONE` block.
 
 ## License

@@ -9,6 +9,11 @@
  * 75-char line folding, UTC or TZID timestamps, all-day events (with the RFC's
  * exclusive DTEND), recurrence rules, attendees, and VALARM reminders.
  *
+ * Security: TEXT values are escaped per RFC 5545, and every single-line value
+ * (URLs, emails, rules, status/role/action tokens, triggers) rejects control
+ * characters, so untrusted input cannot inject extra lines into the generated
+ * .ics file. URLs are restricted to absolute http(s) links.
+ *
  * Usage:
  *   <script src="ics.js"></script>
  *   const cal = new IcsGenerator.Calendar({ name: 'My Events' });
@@ -34,7 +39,10 @@
       .replace(/\\/g, '\\\\')
       .replace(/;/g, '\\;')
       .replace(/,/g, '\\,')
-      .replace(/\r\n|\r|\n/g, '\\n');
+      .replace(/\r\n|\r|\n/g, '\\n')
+      /* C0 controls other than TAB/CR/LF (handled above) and DEL are not
+       * allowed in TEXT values — drop them defensively. */
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
   }
 
   /* RFC 5545 §3.2 — escape special characters in parameter values. */
@@ -44,6 +52,45 @@
       .replace(/;/g, '\\;')
       .replace(/:/g, '\\:')
       .replace(/,/g, '\\,');
+  }
+
+  /*
+   * Reject raw control characters in single-line values (URLs, emails, rules,
+   * status/role/action tokens, trigger strings). Allowing CR/LF here would let
+   * untrusted input inject arbitrary lines into the generated .ics document.
+   */
+  function rejectControlChars(value, label) {
+    if (/[\u0000-\u001F\u007F]/.test(String(value))) {
+      throw new Error('ics-gen: ' + label + ' must not contain control characters.');
+    }
+  }
+
+  /*
+   * Loose but effective mailto check: exactly one non-empty local part and a
+   * dotted domain, and no whitespace/control characters (which also blocks
+   * CR/LF line injection through the mailto: value).
+   */
+  function assertEmail(email, label) {
+    email = String(email == null ? '' : email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error('ics-gen: invalid ' + label + ' email address.');
+    }
+    return email;
+  }
+
+  /*
+   * Only absolute http(s) links may be embedded as URL; javascript:, data: and
+   * friends are rejected to avoid scheme-injection and phishing-style values.
+   */
+  function sanitizeUrl(url) {
+    var s = String(url == null ? '' : url).trim();
+    rejectControlChars(s, 'event "url"');
+    var m = /^([a-z][a-z0-9+.-]*):/i.exec(s);
+    var scheme = m ? m[1].toLowerCase() : '';
+    if (scheme !== 'http' && scheme !== 'https') {
+      throw new Error('ics-gen: event "url" must be an absolute http(s) URL.');
+    }
+    return s;
   }
 
   /*
@@ -141,7 +188,9 @@
     if (typeof trigger === 'number') {
       return (trigger <= 0 ? '-PT' : 'PT') + Math.abs(trigger) + 'M';
     }
-    return String(trigger == null ? '-PT15M' : trigger);
+    var s = String(trigger == null ? '-PT15M' : trigger);
+    rejectControlChars(s, 'alarm trigger');
+    return s;
   }
 
   function computeEnd(options, allDay) {
@@ -170,21 +219,33 @@
   }
 
   function organizerLine(org) {
-    var param = org.name ? ';CN=' + escapeParam(org.name) : '';
-    return 'ORGANIZER' + param + ':mailto:' + org.email;
+    org = org || {};
+    if (org.name) rejectControlChars(org.name, 'organizer name');
+    return 'ORGANIZER' + (org.name ? ';CN=' + escapeParam(org.name) : '') + ':mailto:' + assertEmail(org.email, 'organizer');
   }
 
   function attendeeLine(a) {
+    a = a || {};
     var params = [];
-    if (a.name) params.push('CN=' + escapeParam(a.name));
-    if (a.role) params.push('ROLE=' + String(a.role).toUpperCase());
-    if (a.status) params.push('PARTSTAT=' + String(a.status).toUpperCase());
+    if (a.name) {
+      rejectControlChars(a.name, 'attendee name');
+      params.push('CN=' + escapeParam(a.name));
+    }
+    if (a.role) {
+      rejectControlChars(String(a.role), 'attendee role');
+      params.push('ROLE=' + String(a.role).toUpperCase());
+    }
+    if (a.status) {
+      rejectControlChars(String(a.status), 'attendee status');
+      params.push('PARTSTAT=' + String(a.status).toUpperCase());
+    }
     if (a.rsvp) params.push('RSVP=TRUE');
-    return 'ATTENDEE' + (params.length ? ';' + params.join(';') : '') + ':mailto:' + a.email;
+    return 'ATTENDEE' + (params.length ? ';' + params.join(';') : '') + ':mailto:' + assertEmail(a.email, 'attendee');
   }
 
   function alarmLines(alarm, eventOptions) {
     var action = String(alarm.action || 'DISPLAY').toUpperCase();
+    rejectControlChars(action, 'alarm action');
     var trigger = normalizeTrigger(alarm.trigger);
     var description = alarm.description || eventOptions.title || 'Reminder';
     return [
@@ -194,6 +255,34 @@
       'TRIGGER:' + trigger,
       'END:VALARM'
     ];
+  }
+
+  /*
+   * Eager validation: every single-line field is checked when the event is
+   * constructed, so an invalid event can never enter the calendar and break a
+   * later render(). The same checks run again during serialization (toLines)
+   * as defense in depth in case options are mutated after construction.
+   */
+  function validateEventOptions(options) {
+    if (options.url) sanitizeUrl(options.url);
+    if (options.rrule) rejectControlChars(String(options.rrule), 'event "rrule"');
+    if (options.status) rejectControlChars(String(options.status), 'event "status"');
+    (options.alarms || []).forEach(function (alarm) {
+      if (!alarm) return;
+      if (alarm.action) rejectControlChars(String(alarm.action), 'alarm action');
+      if (alarm.trigger != null) normalizeTrigger(alarm.trigger);
+    });
+    if (options.organizer && options.organizer.email) {
+      if (options.organizer.name) rejectControlChars(options.organizer.name, 'organizer name');
+      assertEmail(options.organizer.email, 'organizer');
+    }
+    (options.attendees || []).forEach(function (a) {
+      if (!a) return;
+      if (a.email) assertEmail(a.email, 'attendee');
+      if (a.name) rejectControlChars(a.name, 'attendee name');
+      if (a.role) rejectControlChars(String(a.role), 'attendee role');
+      if (a.status) rejectControlChars(String(a.status), 'attendee status');
+    });
   }
 
   /*
@@ -212,6 +301,7 @@
     } else if (!(options.start instanceof Date) || isNaN(options.start.getTime())) {
       throw new Error('ics-gen: event "start" must be a Date or { year, month, day }.');
     }
+    validateEventOptions(options);
 
     this.options = options;
     this.uid = options.uid ? escapeText(options.uid) : makeUid();
@@ -244,12 +334,18 @@
     lines.push('SUMMARY:' + escapeText(o.title));
     if (o.description) lines.push('DESCRIPTION:' + escapeText(o.description));
     if (o.location) lines.push('LOCATION:' + escapeText(o.location));
-    if (o.url) lines.push('URL:' + String(o.url)); /* URI value — not text-escaped */
-    if (o.status) lines.push('STATUS:' + String(o.status).toUpperCase());
+    if (o.url) lines.push('URL:' + sanitizeUrl(o.url)); /* URI value — http(s) only */
+    if (o.status) {
+      rejectControlChars(String(o.status), 'event "status"');
+      lines.push('STATUS:' + String(o.status).toUpperCase());
+    }
     if (Array.isArray(o.categories) && o.categories.length) {
       lines.push('CATEGORIES:' + o.categories.map(escapeText).join(','));
     }
-    if (o.rrule) lines.push('RRULE:' + String(o.rrule).trim());
+    if (o.rrule) {
+      rejectControlChars(String(o.rrule), 'event "rrule"');
+      lines.push('RRULE:' + String(o.rrule).trim());
+    }
     if (o.organizer && o.organizer.email) lines.push(organizerLine(o.organizer));
     (o.attendees || []).forEach(function (a) {
       if (a && a.email) lines.push(attendeeLine(a));
