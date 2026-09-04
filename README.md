@@ -6,6 +6,13 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Download them with a Blob URL (works on `file://` too)
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
+> **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go - 2026-09-04  
+> **Last updated:** `2026-09-04` (ISO 8601)
+>
+> **Maintenance rule:** every change that produces a branch to merge must bump
+> the `Last updated` date above to that day's date (ISO 8601, `YYYY-MM-DD`),
+> so each merge's doc freshness is auditable at a glance.
+
 ## Is this possible on a static site? Yes.
 
 An `.ics` file is just plain text (RFC 5545). Nothing about generating it requires a backend: the JavaScript runs in the visitor's browser, builds the text, and hands it to the browser as a downloadable file. A static host only needs to serve HTML/JS/CSS — the same files you already use for any static site.
@@ -138,6 +145,68 @@ Builds a Blob and triggers a file download in the browser. Pure client-side.
 
 - Paste the preview (or **Copy .ics**) into the validator at <https://icalendar.org/validator.html>.
 - Import into Google Calendar / Outlook / Apple Calendar and check: special characters (`;` `,` `\` `&`), multi-line descriptions, a >75-char description (folding), an all-day multi-day event, a recurring event, and a timezone event.
+
+## Security & web-form best practices
+
+This page is a static, 100% client-side form — there is no server, no
+persistence, and no third-party runtime requests, so the classic server-side
+attack classes (server-side injection, CSRF, auth bypass, SSRF, SQL injection)
+do not apply. What does apply is the client-side half of the industry guidance
+(OWASP Top 10:2025, OWASP Cheat Sheet Series, MDN), mapped below.
+
+### Controls already in place (this repository)
+
+- **Input validation** *(OWASP Top 10:2025 A05-Injection — which includes XSS,
+  30k+ CVEs; OWASP Input Validation Cheat Sheet)* — validation happens as early
+  as possible in the data flow, at the `IcsGenerator` boundary: single-line
+  values (URLs, emails, recurrence rules, status/role/action tokens, alarm
+  triggers) reject control characters (CR/LF line injection); `URL` is
+  restricted to absolute `http(s)` links (no `javascript:`/`data:` schemes);
+  attendee/organizer `mailto:` emails are format-checked.
+- **Output encoding, never raw HTML** *(OWASP XSS Prevention / DOM-based XSS
+  Cheat Sheets — avoid `innerHTML`, use safe DOM APIs)* — every DOM insertion
+  uses `textContent` (zero `innerHTML`/`eval` across the codebase); for the
+  `.ics` output, text values are escaped per RFC 5545 and residual C0 control
+  characters are stripped, so input cannot inject extra lines or properties
+  into the generated file.
+- **Content-Security-Policy** *(OWASP Top 10:2025 A02-Security Misconfiguration;
+  OWASP CSP Cheat Sheet)* — a strict default-deny policy
+  (`default-src 'none'`, `script-src 'self'`, no `'unsafe-inline'`) ships in a
+  `<meta>` tag so it applies even on hosts that can't send headers (GitHub
+  Pages). CSP is defense-in-depth, not a primary defense — it caps the blast
+  radius if a DOM-XSS bug is ever introduced later.
+- **Supply chain** *(OWASP Top 10:2025 A03-Software & Data Integrity)* — zero
+  runtime dependencies and zero external requests; a page cannot be compromised
+  through a dependency it doesn't have.
+
+### Suggestions if you extend this app
+
+- **Client-side validation is UX, not a security boundary** *(OWASP Input
+  Validation Cheat Sheet; MDN)* — if a backend is ever added (e.g. an API that
+  receives events), it must re-validate all input server-side. Front-end checks
+  stop mistakes, not attackers.
+- **Header-based hardening where the host supports it** — the `<meta>` CSP
+  cannot carry `frame-ancestors` or `X-Frame-Options`; those require response
+  headers *(OWASP CSP Cheat Sheet)*. Netlify (`_headers`), Cloudflare
+  (`_headers`), and nginx (`add_header`) can add `frame-ancestors 'none'`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, HSTS, and
+  `Permissions-Policy`. GitHub Pages cannot send custom headers.
+- **If inline scripts or external resources are ever added**, keep the CSP
+  strict: prefer nonces or hashes over `'unsafe-inline'` *(OWASP CSP Cheat
+  Sheet)*.
+- **If a rich-text or WYSIWYG field is ever added**, never echo its value as
+  HTML — sanitize with a maintained library (OWASP recommends DOMPurify) in
+  addition to output encoding.
+- **If any data is ever persisted** (e.g. `localStorage`), treat everything
+  read back from storage as untrusted input on read *(OWASP HTML5 Security
+  Cheat Sheet)*.
+- **Serve `.ics` correctly**: hosts that already map `.ics` to
+  `Content-Type: text/calendar` (Netlify, Cloudflare Pages) are fine — add your
+  own mappings elsewhere if you host a shared `calendar.ics`, and pair with
+  `nosniff`.
+- **Re-audit on change**: after any change touching `ics.js`, re-run the
+  validation checks in the test suite and re-import a generated file into a
+  calendar client.
 
 ## Limitations
 
