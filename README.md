@@ -7,7 +7,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-04T01:35:11Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-04T12:14:40Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -26,6 +26,9 @@ The only things a static host *can't* do are server-side tasks — e.g. emailing
 | `ics.js` | The generator library (also usable as a Node module). No dependencies. |
 | `index.html` | A self-contained demo app: form → events list → download. |
 | `styles.css` | Styling for the demo app. |
+| `app.js` | Demo-app logic (kept in its own file so the page can enforce a strict CSP). |
+| `og-image.png` | 1200×630 social share image for Open Graph / X (Twitter) cards. |
+| `sitemap.xml`, `robots.txt` | Search-engine discovery for the hosted site. |
 | `README.md` | This file. |
 
 ## Quick start
@@ -54,6 +57,8 @@ Because there is no build step, deploy the folder as-is:
 **S3 + CloudFront / nginx / any file host** — upload the files and serve them. Serve `.ics` with `Content-Type: text/calendar` if you want users to subscribe to a shared `calendar.ics` URL (GitHub Pages, Netlify, and Cloudflare Pages already map `.ics` correctly).
 
 **Local preview** — `npx serve .` or `python3 -m http.server 8080`, or just open `index.html` directly.
+
+**Search & social metadata** — `index.html` ships a keyword-focused `<title>` and meta description, canonical, Open Graph and X/Twitter card tags, plus JSON-LD structured data: a `WebApplication` entity for the tool and a `FAQPage` that mirrors the on-page FAQ. `sitemap.xml` and `robots.txt` are included for the hosted site. The canonical and `og:` URLs all assume the GitHub Pages URL (`https://spellitwithaph.github.io/ics-gen/`); if you deploy under a custom domain, update the canonical, `og:url` and `og:image` values in the `<head>` and the URLs inside `sitemap.xml`/`robots.txt`. Enable Pages on your host to make the site live — until then the sitemap/robots are inert.
 
 ## Using the generator in your own page
 

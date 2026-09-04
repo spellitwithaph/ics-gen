@@ -4,12 +4,86 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>ics-gen — client-side .ics generator</title>
+<title>ics-gen — Free iCalendar (.ics) Generator, No Sign-Up</title>
+<meta name="description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar. 100% client-side.">
+<!-- Canonical and social URLs assume GitHub Pages (spellitwithaph.github.io/ics-gen).
+     If you publish under a custom domain, update canonical/og:url/og:image. -->
+<link rel="canonical" href="https://spellitwithaph.github.io/ics-gen/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ics-gen">
+<meta property="og:title" content="ics-gen — Free iCalendar (.ics) Generator, No Sign-Up">
+<meta property="og:description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar. 100% client-side.">
+<meta property="og:url" content="https://spellitwithaph.github.io/ics-gen/">
+<meta property="og:image" content="https://spellitwithaph.github.io/ics-gen/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ics-gen — free client-side iCalendar (.ics) generator">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ics-gen — Free iCalendar (.ics) Generator, No Sign-Up">
+<meta name="twitter:description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar.">
+<meta name="twitter:image" content="https://spellitwithaph.github.io/ics-gen/og-image.png">
 <!-- Empty data: favicon suppresses the default /favicon.ico request (no 404
      noise on static hosts, fully offline). If you ever add a real favicon
      file, extend img-src in the CSP above accordingly (it is data: only). -->
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ics-gen — Free iCalendar (.ics) Generator",
+  "url": "https://spellitwithaph.github.io/ics-gen/",
+  "description": "Free client-side iCalendar (.ics) file generator. Build calendar events in your browser and download a ready-to-import .ics file for Google Calendar, Outlook, or Apple Calendar. Nothing is uploaded.",
+  "applicationCategory": "UtilityApplication",
+  "operatingSystem": "Any (browser)",
+  "browserRequirements": "Requires a modern browser (Blob, Intl.DateTimeFormat, Array.from)",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "featureList": [
+    "All-day, timed and multi-day events",
+    "Recurring events (daily, weekly, monthly, yearly)",
+    "Reminders (VALARM)",
+    "Attendees and organizer (mailto)",
+    "URL, location, categories and status",
+    "RFC 5545 escaping, 75-octet line folding, UTC/TZID timestamps",
+    "Copies or downloads the .ics file; 100% client-side, no uploads"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is an .ics file?",
+      "acceptedAnswer": { "@type": "Answer", "text": "An .ics file is the standard calendar format (RFC 5545) used to move events between calendars. Import it into Google Calendar, Outlook, Apple Calendar, or Thunderbird and the event appears in your calendar." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is ics-gen free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — free and open source (MIT), no sign-up and no account required." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does ics-gen upload my event data?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. The page runs 100% in your browser with no server and no third-party requests — nothing you type ever leaves your device." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does ics-gen work offline?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Open index.html directly from disk, or host the folder on any static site — no build step and no network calls." }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I create recurring events or reminders?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — daily, weekly, monthly and yearly recurrence with optional end dates, configurable reminders (VALARM), plus all-day, timed and multi-day events with attendees." }
+    }
+  ]
+}
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -143,6 +217,31 @@
       </details>
     </section>
   </main>
+
+  <section class="panel faq" aria-labelledby="faq-heading">
+    <h2 id="faq-heading">Frequently asked questions</h2>
+
+    <h3>What is an .ics file?</h3>
+    <p>An <code>.ics</code> file is the standard calendar format (RFC 5545) used to
+    move events between calendars. Import it into Google Calendar, Outlook, Apple
+    Calendar, or Thunderbird and the event appears in your calendar.</p>
+
+    <h3>Is ics-gen free?</h3>
+    <p>Yes — free and open source (MIT), no sign-up and no account required.</p>
+
+    <h3>Does ics-gen upload my event data?</h3>
+    <p>No. The page runs 100% in your browser with no server and no third-party
+    requests — nothing you type ever leaves your device.</p>
+
+    <h3>Does ics-gen work offline?</h3>
+    <p>Yes. Open <code>index.html</code> directly from disk, or host the folder on
+    any static site — no build step and no network calls.</p>
+
+    <h3>Can I create recurring events or reminders?</h3>
+    <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
+    configurable reminders (VALARM), plus all-day, timed, and multi-day events
+    with attendees.</p>
+  </section>
 
   <footer>
     Runs entirely in your browser — no server, no tracking, no data leaves your device.

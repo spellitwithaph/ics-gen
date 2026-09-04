@@ -171,3 +171,7 @@ footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 2
 footer a { color: var(--accent); }
 
 [hidden] { display: none !important; }
+
+.panel.faq h3 { margin: 18px 0 4px; font-size: 14px; }
+.panel.faq h3:first-of-type { margin-top: 0; }
+.panel.faq p { margin: 0 0 4px; color: var(--muted); font-size: 13.5px; }
