@@ -190,7 +190,8 @@
         </div>
 
         <div class="form-actions">
-          <button id="add-btn" type="submit" class="btn primary">Add to calendar</button>
+          <button id="add-btn" type="submit" class="btn primary">Add to .ics</button>
+          <button id="download-btn" class="btn" type="button" disabled>Download .ics</button>
           <span id="status-msg" class="status-msg" role="status"></span>
         </div>
       </form>
@@ -203,7 +204,6 @@
           <button id="sample-btn" class="btn" type="button">Load sample events</button>
           <button id="clear-btn" class="btn ghost" type="button">Clear all</button>
           <button id="copy-btn" class="btn ghost" type="button" disabled>Copy .ics</button>
-          <button id="download-btn" class="btn primary" type="button" disabled>Download .ics</button>
         </div>
       </div>
 
@@ -211,7 +211,7 @@
         <li class="empty">No events yet. Add one on the left, or load the samples.</li>
       </ul>
 
-      <details>
+      <details id="preview-box">
         <summary>Preview: generated .ics text</summary>
         <pre id="preview"></pre>
       </details>

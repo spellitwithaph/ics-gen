@@ -7,7 +7,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-04T12:31:17Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-04T13:42:23Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -34,8 +34,8 @@ The only things a static host *can't* do are server-side tasks — e.g. emailing
 ## Quick start
 
 1. Open `index.html` in any modern browser (double-clicking works — there is no build step).
-2. Fill in an event and click **Add to calendar**.
-3. Click **Download .ics**, then import the file:
+2. Fill in an event and click **Add to .ics** (the preview below the event list expands so you can see the generated iCalendar text).
+3. Click **Download .ics** (next to the Add button), then import the file:
    - Google Calendar → Settings → **Import & export** → select the file.
    - Outlook → **File → Open & Export → Import/Export** (or drag it in Outlook 365).
    - Apple Calendar → **File → Import**.

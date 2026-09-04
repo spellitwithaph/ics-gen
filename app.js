@@ -233,6 +233,8 @@
     var has = cal.events.length > 0;
     $('download-btn').disabled = !has;
     $('copy-btn').disabled = !has;
+    /* Auto-show the preview once any event exists; collapse when the list empties. */
+    $('preview-box').open = has;
   }
 
   /* ---------- actions ---------- */
