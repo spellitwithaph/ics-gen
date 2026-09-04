@@ -117,12 +117,12 @@ textarea { resize: vertical; }
 
 .toolbar {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
-  flex-wrap: wrap;
   margin-bottom: 14px;
 }
+.toolbar h2 { margin: 0; }
 .toolbar-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 
 #event-list { list-style: none; margin: 0 0 14px; padding: 0; }
