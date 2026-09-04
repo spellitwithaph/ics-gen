@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://spellitwithaph.github.io/ics-gen/sitemap.xml
+Sitemap: https://ics-gen.pages.dev/sitemap.xml

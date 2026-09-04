@@ -7,7 +7,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-04T12:14:40Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-04T12:31:17Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -58,7 +58,7 @@ Because there is no build step, deploy the folder as-is:
 
 **Local preview** — `npx serve .` or `python3 -m http.server 8080`, or just open `index.html` directly.
 
-**Search & social metadata** — `index.html` ships a keyword-focused `<title>` and meta description, canonical, Open Graph and X/Twitter card tags, plus JSON-LD structured data: a `WebApplication` entity for the tool and a `FAQPage` that mirrors the on-page FAQ. `sitemap.xml` and `robots.txt` are included for the hosted site. The canonical and `og:` URLs all assume the GitHub Pages URL (`https://spellitwithaph.github.io/ics-gen/`); if you deploy under a custom domain, update the canonical, `og:url` and `og:image` values in the `<head>` and the URLs inside `sitemap.xml`/`robots.txt`. Enable Pages on your host to make the site live — until then the sitemap/robots are inert.
+**Search & social metadata** — `index.html` ships a keyword-focused `<title>` and meta description, canonical, Open Graph and X/Twitter card tags, plus JSON-LD structured data: a `WebApplication` entity for the tool and a `FAQPage` that mirrors the on-page FAQ. `sitemap.xml` and `robots.txt` are included for the hosted site. This repository deploys to Cloudflare Pages (`https://ics-gen.pages.dev/`) via GitHub Actions, and the canonical/`og:`/sitemap URLs target that domain; if you ever move to a custom domain, update the canonical, `og:url` and `og:image` values in the `<head>` and the URLs inside `sitemap.xml`/`robots.txt`.
 
 ## Using the generator in your own page
 
