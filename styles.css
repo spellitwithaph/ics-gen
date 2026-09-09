@@ -83,6 +83,7 @@ main {
 textarea { resize: vertical; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field-row.tri { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 560px) { .field-row { grid-template-columns: 1fr; } }
 
 .check {

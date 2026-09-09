@@ -44,6 +44,7 @@
     "All-day, timed and multi-day events",
     "Recurring events (daily, weekly, monthly, yearly)",
     "Reminders (VALARM)",
+    "Per-event reminder timing (minutes, hours, or days before the event)",
     "Attendees and organizer (mailto)",
     "URL, location, categories and status",
     "RFC 5545 escaping, 75-octet line folding, UTC/TZID timestamps",
@@ -79,7 +80,7 @@
     {
       "@type": "Question",
       "name": "Can I create recurring events or reminders?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes — daily, weekly, monthly and yearly recurrence with optional end dates, configurable reminders (VALARM), plus all-day, timed and multi-day events with attendees." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — daily, weekly, monthly and yearly recurrence with optional end dates, plus reminders set per event — minutes, hours, or days before the start (VALARM) — and all-day, timed and multi-day events with attendees." }
     }
   ]
 }
@@ -141,7 +142,7 @@
           </div>
         </div>
 
-        <div class="field-row">
+        <div class="field-row tri">
           <div class="field">
             <label for="recur-freq">Repeat</label>
             <select id="recur-freq">
@@ -160,16 +161,26 @@
             <label for="recur-until">Until (optional)</label>
             <input id="recur-until" type="date">
           </div>
+        </div>
+
+        <div class="field-row tri" id="reminder-row">
           <div class="field">
-            <label for="reminder">Reminder</label>
-            <select id="reminder">
-              <option value="none">None</option>
-              <option value="5">5 minutes before</option>
-              <option value="10" selected>10 minutes before</option>
-              <option value="15">15 minutes before</option>
-              <option value="30">30 minutes before</option>
-              <option value="60">1 hour before</option>
-              <option value="1440">1 day before</option>
+            <label for="reminder-toggle">Reminder</label>
+            <select id="reminder-toggle">
+              <option value="on" selected>Remind me</option>
+              <option value="off">No reminder</option>
+            </select>
+          </div>
+          <div class="field" id="field-reminder-value">
+            <label for="reminder-value">Time before</label>
+            <input id="reminder-value" type="number" min="1" max="999" step="1" value="10">
+          </div>
+          <div class="field" id="field-reminder-unit">
+            <label for="reminder-unit">Unit</label>
+            <select id="reminder-unit">
+              <option value="minutes" selected>Minutes</option>
+              <option value="hours">Hours</option>
+              <option value="days">Days</option>
             </select>
           </div>
         </div>
@@ -239,8 +250,9 @@
 
     <h3>Can I create recurring events or reminders?</h3>
     <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
-    configurable reminders (VALARM), plus all-day, timed, and multi-day events
-    with attendees.</p>
+    plus reminders set per event — minutes, hours, or days before the start — and
+    all-day, timed, and multi-day events with attendees. In one .ics file each event
+    carries its own reminder.</p>
   </section>
 
   <footer>

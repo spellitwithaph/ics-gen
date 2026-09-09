@@ -7,7 +7,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-04T13:50:01Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-09T19:30:54Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -40,7 +40,10 @@ The only things a static host *can't* do are server-side tasks — e.g. emailing
    - Outlook → **File → Open & Export → Import/Export** (or drag it in Outlook 365).
    - Apple Calendar → **File → Import**.
 
-Try the **Load sample events** button to see recurrence, all-day, attendees, and reminders working.
+Try the **Load sample events** button to see recurrence, all-day, attendees, and
+reminders working — each sample event carries its own reminder (10 minutes,
+2 hours, or 1 day before), and the demo form lets you set any reminder in
+minutes, hours, or days before the event.
 
 ## Hosting on any static site
 
@@ -122,7 +125,7 @@ Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `bo
 | `status` | `string` | | `CONFIRMED` / `TENTATIVE` / `CANCELLED`. |
 | `categories` | `string[]` | | `CATEGORIES`. |
 | `rrule` | `string` | | Raw rule, e.g. `FREQ=WEEKLY;BYDAY=MO,WE,FR` or `FREQ=MONTHLY;COUNT=6`. Rejected if it contains control characters (CR/LF injection). |
-| `alarms` | `Array<{trigger, description?, action?}>` | | `trigger` is a minute number (`-15`) or an ISO 8601 duration string (`-PT30M`). `description` defaults to the event title. Emits a `VALARM:DISPLAY`. Any value containing control characters throws. |
+| `alarms` | `Array<{trigger, description?, action?}>` | | `trigger` is a minute number (`-15`) or an ISO 8601 duration string (`-PT30M`, `-P2D`, …). Each array entry emits its own `VALARM` inside that event's `VEVENT`, so every event — and every reminder of an event — is independent. `description` defaults to the event title. Any value containing control characters throws. |
 | `attendees` | `Array<{email, name?, role?, status?, rsvp?}>` | | Emitted as `ATTENDEE;CN=…;ROLE=…;PARTSTAT=…:mailto:…`. `email` is validated (non-empty local part + dotted domain, no whitespace); `name`, `role` and `status` must not contain control characters. |
 | `organizer` | `{email, name?}` | | Emitted as `ORGANIZER;CN=…:mailto:…`. `email` validated as above. |
 

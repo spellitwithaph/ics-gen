@@ -85,8 +85,15 @@
     $('field-until').hidden = off;
   }
 
+  function syncReminderUI() {
+    var off = $('reminder-toggle').value === 'off';
+    $('field-reminder-value').hidden = off;
+    $('field-reminder-unit').hidden = off;
+  }
+
   $('all-day').addEventListener('change', syncAllDayUI);
   $('recur-freq').addEventListener('change', syncRecurUI);
+  $('reminder-toggle').addEventListener('change', syncReminderUI);
 
   /* ---------- reading the form ---------- */
 
@@ -143,13 +150,40 @@
       opts.rrule = parts.join(';');
     }
 
-    var rem = $('reminder').value;
-    if (rem !== 'none') opts.alarms = [{ trigger: -parseInt(rem, 10) }];
+    var on = $('reminder-toggle').value === 'on';
+    if (on) {
+      var n = parseInt($('reminder-value').value, 10);
+      if (!n || n < 1) throw new Error('Pick how long before the event to remind you (1 or more).');
+      var unit = $('reminder-unit').value; /* minutes | hours | days */
+      var dur = unit === 'days' ? 'P' + n + 'D'
+        : unit === 'hours' ? 'PT' + n + 'H'
+        : 'PT' + n + 'M';
+      opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
+    }
 
     return opts;
   }
 
   /* ---------- rendering ---------- */
+
+  /* Number of minutes, or an ISO 8601 duration string (e.g. '-PT10M', '-PT2H',
+   * '-P1D'), → a human label like "10 min" or "2 days". */
+  function humanizeDuration(trigger) {
+    var raw;
+    if (typeof trigger === 'number') {
+      raw = 'PT' + Math.abs(trigger) + 'M'; /* minutes → 'PT10M' */
+    } else {
+      var s = String(trigger == null ? '' : trigger);
+      raw = s.replace(/^[-+]/, ''); /* strip the sign: '-PT2H' → 'PT2H' */
+    }
+    var m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(raw);
+    if (!m) return raw;
+    var out = [];
+    if (m[1]) out.push(m[1] === '1' ? '1 day' : m[1] + ' days');
+    if (m[2]) out.push(m[2] === '1' ? '1 hour' : m[2] + ' hours');
+    if (m[3]) out.push(m[3] === '1' ? '1 min' : m[3] + ' min');
+    return out.join(' ') || '0 min';
+  }
 
   function describeEvent(ev) {
     var o = ev.options;
@@ -186,6 +220,11 @@
     }
     var rule = /FREQ=([A-Z]+)/.exec(o.rrule || '');
     if (rule) bits.push('Repeats ' + rule[1].toLowerCase());
+    if (Array.isArray(o.alarms) && o.alarms.length) {
+      bits.push(o.alarms.map(function (a) {
+        return 'remind ' + humanizeDuration(a.trigger) + ' before';
+      }).join(' & '));
+    }
     if (o.location) bits.push(o.location);
     return bits.join(' · ');
   }
@@ -294,7 +333,7 @@
   $('sample-btn').addEventListener('click', function () {
     cal.clear();
 
-    /* 1. recurring standup */
+    /* 1. recurring standup — remind 10 min before (number trigger) */
     cal.addEvent({
       title: 'Team standup',
       description: 'Daily sync — what I did, what I am doing, blockers.',
@@ -306,7 +345,7 @@
       alarms: [{ trigger: -10 }]
     });
 
-    /* 2. all-day multi-day event */
+    /* 2. all-day multi-day event — remind 1 day before */
     var offsite = daysFromNow(21);
     var offsiteEnd = daysFromNow(22);
     cal.addEvent({
@@ -315,10 +354,11 @@
       location: 'Mountain lodge',
       start: { year: offsite.getFullYear(), month: offsite.getMonth() + 1, day: offsite.getDate() },
       end: { year: offsiteEnd.getFullYear(), month: offsiteEnd.getMonth() + 1, day: offsiteEnd.getDate() },
-      categories: ['Release', 'Planning']
+      categories: ['Release', 'Planning'],
+      alarms: [{ trigger: '-P1D' }]
     });
 
-    /* 3. one-off with attendees */
+    /* 3. one-off with attendees — remind 2 hours before */
     cal.addEvent({
       title: 'Design review',
       start: nextWeekday(3, 14, 0),
@@ -330,7 +370,8 @@
       attendees: [
         { name: 'Riley Dev', email: 'riley@example.com', role: 'REQ-PARTICIPANT' },
         { email: 'sam@example.com', status: 'NEEDS-ACTION' }
-      ]
+      ],
+      alarms: [{ trigger: '-PT2H' }]
     });
 
     render();
@@ -342,5 +383,6 @@
   defaultFormDates();
   syncAllDayUI();
   syncRecurUI();
+  syncReminderUI();
   render();
 })();
