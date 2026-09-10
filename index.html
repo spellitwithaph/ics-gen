@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<!-- static.cloudflareinsights.com (beacon script) and cloudflareinsights.com
+     (its reporting endpoint) are the only third-party sources allowed: they
+     power the cookie-free Cloudflare Web Analytics visit counter that Pages
+     auto-injects. It never sees form or event data. Remove both if analytics
+     are ever disabled on the host. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file: https://static.cloudflareinsights.com; style-src 'self' file:; img-src data:; connect-src https://cloudflareinsights.com; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>ics-gen — Free iCalendar (.ics) Generator, No Sign-Up</title>
 <meta name="description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar. 100% client-side.">
 <!-- Canonical and social URLs target the live site: Cloudflare Pages. If you
@@ -70,12 +75,12 @@
     {
       "@type": "Question",
       "name": "Does ics-gen upload my event data?",
-      "acceptedAnswer": { "@type": "Answer", "text": "No. The page runs 100% in your browser with no server and no third-party requests — nothing you type ever leaves your device." }
+      "acceptedAnswer": { "@type": "Answer", "text": "No. The page runs 100% in your browser — nothing you type ever leaves your device. The hosted site uses cookie-free Cloudflare Web Analytics to count visits (aggregate page views, referrers, and countries); your events and form data are never collected or sent anywhere." }
     },
     {
       "@type": "Question",
       "name": "Does ics-gen work offline?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Open index.html directly from disk, or host the folder on any static site — no build step and no network calls." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Open index.html directly from disk — zero requests of any kind. Hosted copies need no network for the app itself; the only extra request is Cloudflare's cookie-free visit counter." }
     },
     {
       "@type": "Question",
@@ -241,12 +246,16 @@
     <p>Yes — free and open source (MIT), no sign-up and no account required.</p>
 
     <h3>Does ics-gen upload my event data?</h3>
-    <p>No. The page runs 100% in your browser with no server and no third-party
-    requests — nothing you type ever leaves your device.</p>
+    <p>No. The page runs 100% in your browser — nothing you type ever leaves
+    your device. The hosted site uses cookie-free
+    <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
+    to count visits (aggregate page views, referrers, and countries); your
+    events and form data are never collected or sent anywhere.</p>
 
     <h3>Does ics-gen work offline?</h3>
-    <p>Yes. Open <code>index.html</code> directly from disk, or host the folder on
-    any static site — no build step and no network calls.</p>
+    <p>Yes. Open <code>index.html</code> directly from disk — zero requests of
+    any kind. Hosted copies need no network for the app itself; the only extra
+    request is Cloudflare's cookie-free visit counter.</p>
 
     <h3>Can I create recurring events or reminders?</h3>
     <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
@@ -256,7 +265,10 @@
   </section>
 
   <footer>
-    Runs entirely in your browser — no server, no tracking, no data leaves your device.
+    Events are generated entirely in your browser and never leave this page.
+    The site itself uses cookie-free
+    <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
+    to count visits — aggregate page views only, never your event data.
     Validate output at <a href="https://icalendar.org/validator.html" target="_blank" rel="noopener noreferrer">icalendar.org</a>.
   </footer>
 </div>

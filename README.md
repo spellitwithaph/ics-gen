@@ -1,13 +1,13 @@
 # ics-gen
 
-A dependency-free **iCalendar (.ics) generator that runs entirely in the browser** — built for static-site hosting. No server, no build step, no API keys, no third-party requests.
+A dependency-free **iCalendar (.ics) generator that runs entirely in the browser** — built for static-site hosting. No server-side code, no build step, no API keys. The demo page's only third-party request is Cloudflare Web Analytics (cookie-free visit counting; event data never leaves the browser).
 
 - Generate `.ics` files with a few lines of plain JavaScript
 - Download them with a Blob URL (works on `file://` too)
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-10T19:31:55Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-10T19:37:29Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -157,10 +157,11 @@ Builds a Blob and triggers a file download in the browser. Pure client-side.
 
 ## Security & web-form best practices
 
-This page is a static, 100% client-side form — there is no server, no
-persistence, and no third-party runtime requests, so the classic server-side
-attack classes (server-side injection, CSRF, auth bypass, SSRF, SQL injection)
-do not apply. What does apply is the client-side half of the industry guidance
+This page is a static, 100% client-side form — there is no server-side code, no
+persistence, and no third-party runtime code except the Cloudflare Web
+Analytics beacon injected by the host (visit counting only), so the classic
+server-side attack classes (server-side injection, CSRF, auth bypass, SSRF,
+SQL injection) do not apply. What does apply is the client-side half of the industry guidance
 (OWASP Top 10:2025, OWASP Cheat Sheet Series, MDN), mapped below.
 
 ### Controls already in place (this repository)
@@ -222,7 +223,7 @@ do not apply. What does apply is the client-side half of the industry guidance
 - **Modern browsers** are assumed (Blob, `Intl.DateTimeFormat`, `Array.from`, classes). No IE support.
 - **No persistence** on a static host — fine for generating downloads, not for user accounts.
 - **No server-side invitations** — attendees are `mailto:` links; the sender's mail client handles them.
-- **Content-Security-Policy**: `index.html` ships a strict meta CSP (`default-src 'none'`, `script-src 'self'`, no inline script). `file:` sources are explicitly allowed so double-clicking `index.html` keeps working on every browser (scheme `'self'` cannot match local files). Works unchanged on `file://` in Chromium and Firefox. If you ever add inline handlers or external resources, adjust the meta tag or move the policy to response headers (Netlify `_headers`, Cloudflare `_headers`, nginx `add_header`, …). GitHub Pages cannot send custom headers, so the meta tag is the enforcement there.
+- **Content-Security-Policy**: `index.html` ships a strict meta CSP (`default-src 'none'`, `script-src 'self'`, no inline script). The only third-party allowances are `https://static.cloudflareinsights.com` (script) and `https://cloudflareinsights.com` (connect) for the Cloudflare Web Analytics beacon that Pages auto-injects — cookie-free visit counting only; on hosts without injection (GitHub Pages, `file://`) the allowances are simply unused. `file:` sources are explicitly allowed so double-clicking `index.html` keeps working on every browser (scheme `'self'` cannot match local files). Works unchanged on `file://` in Chromium and Firefox. If you ever add inline handlers or external resources, adjust the meta tag or move the policy to response headers (Netlify `_headers`, Cloudflare `_headers`, nginx `add_header`, …). GitHub Pages cannot send custom headers, so the meta tag is the enforcement there.
 - `TZID` is emitted **without** an accompanying `VTIMEZONE` component. Google/Outlook/Apple resolve IANA names client-side, which works in practice; if you need a strictly self-contained file (e.g. offline-only clients), add a `VTIMEZONE` block.
 
 ## License
