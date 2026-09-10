@@ -83,12 +83,16 @@
     var off = $('recur-freq').value === 'NONE';
     $('field-interval').hidden = off;
     $('field-until').hidden = off;
+    /* Down to just the select? Let it span a Status-select-sized column
+     * instead of the first third of the row (which clips "Does not repeat"). */
+    $('recur-row').classList.toggle('single', off);
   }
 
   function syncReminderUI() {
     var off = $('reminder-toggle').value === 'off';
     $('field-reminder-value').hidden = off;
     $('field-reminder-unit').hidden = off;
+    $('reminder-row').classList.toggle('single', off);
   }
 
   $('all-day').addEventListener('change', syncAllDayUI);

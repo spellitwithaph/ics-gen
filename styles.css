@@ -80,11 +80,28 @@ main {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
+/* Custom select chevron: the native arrow sits flush against the right
+ * border; drawing our own lets us keep a few px of padding to its right and
+ * reserves matching text room via padding-right on every select. */
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 30px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%235d6b7e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 3px center;
+}
 textarea { resize: vertical; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-row.tri { grid-template-columns: repeat(3, 1fr); }
-@media (max-width: 560px) { .field-row { grid-template-columns: 1fr; } }
+/* When a tri row is down to its select alone (repeat "Does not repeat",
+ * reminder "No reminder"), span a two-column-style width — the same as the
+ * Status select — instead of the first third of the row, which clips the
+ * "Does not repeat" label. */
+.field-row.tri.single { grid-template-columns: 1fr; }
+@media (min-width: 561px) { .field-row.tri.single { max-width: calc(50% - 6px); } }
+@media (max-width: 560px) {
+  .field-row, .field-row.tri { grid-template-columns: 1fr; }
+}
 
 .check {
   display: flex;
