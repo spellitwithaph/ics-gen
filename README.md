@@ -7,7 +7,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-09T19:30:54Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-10T19:31:55Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -42,7 +42,8 @@ The only things a static host *can't* do are server-side tasks — e.g. emailing
 
 Try the **Load sample events** button to see recurrence, all-day, attendees, and
 reminders working — each sample event carries its own reminder (10 minutes,
-2 hours, or 1 day before), and the demo form lets you set any reminder in
+2 hours, or 1 day before). In the form, reminders are optional: "No reminder"
+is the default; switch the Reminder select to "Remind me" to set one in
 minutes, hours, or days before the event.
 
 ## Hosting on any static site
