@@ -53,6 +53,7 @@
     "Attendees and organizer (mailto)",
     "URL, location, categories and status",
     "RFC 5545 escaping, 75-octet line folding, UTC/TZID timestamps",
+    "Time zone selector (IANA names, defaults to your device zone)",
     "Copies or downloads the .ics file; 100% client-side, no uploads"
   ]
 }
@@ -127,6 +128,13 @@
         </div>
 
         <label class="check"><input id="all-day" type="checkbox"> All-day event</label>
+
+        <div class="field" id="field-timezone">
+          <label for="timezone">Time zone</label>
+          <select id="timezone" aria-describedby="timezone-hint"></select>
+          <p class="hint" id="timezone-hint">Start and end times are read as wall-clock
+          time in this zone. Defaults to the zone your device reports.</p>
+        </div>
 
         <div class="field-row">
           <div class="field">

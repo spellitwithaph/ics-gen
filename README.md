@@ -3,11 +3,12 @@
 A dependency-free **iCalendar (.ics) generator that runs entirely in the browser** — built for static-site hosting. No server-side code, no build step, no API keys. The demo page's only third-party request is Cloudflare Web Analytics (cookie-free visit counting; event data never leaves the browser).
 
 - Generate `.ics` files with a few lines of plain JavaScript
+- Pick a **time zone** per event in the demo form — defaults to your device's zone, with `UTC` and every IANA zone available
 - Download them with a Blob URL (works on `file://` too)
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-10T19:37:29Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-23T20:02:21Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -45,6 +46,13 @@ reminders working — each sample event carries its own reminder (10 minutes,
 2 hours, or 1 day before). In the form, reminders are optional: "No reminder"
 is the default; switch the Reminder select to "Remind me" to set one in
 minutes, hours, or days before the event.
+
+The **Time zone** select sits directly above the date fields and defaults to the
+zone your device reports (labelled "your device"). Pick `UTC` to emit a plain
+`…Z` timestamp, or any IANA zone to emit `DTSTART;TZID=…` wall-clock times.
+All-day events are date-only, so the field is hidden for them. The typed
+start/end times are read as wall-clock time in the chosen zone, so an event
+stays at the same local time across DST changes.
 
 ## Hosting on any static site
 

@@ -32,6 +32,10 @@
     var p = v.split('-').map(Number);
     return { year: p[0], month: p[1], day: p[2] };
   }
+  function parseTimeInput(v) {
+    var p = v.split(':').map(Number);
+    return { hour: p[0], minute: p[1] };
+  }
   function slugify(s) {
     return (s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'calendar');
   }
@@ -49,6 +53,134 @@
     return d;
   }
 
+  /* ---------- time zones ---------- */
+
+  /* Curated fallback used only when Intl.supportedValuesOf is unavailable
+   * (older Safari/Firefox). The browser's own zone is always offered on top. */
+  var FALLBACK_TIME_ZONES = [
+    'Africa/Cairo', 'Africa/Johannesburg', 'Africa/Lagos', 'Africa/Nairobi',
+    'America/Anchorage', 'America/Argentina/Buenos_Aires', 'America/Bogota',
+    'America/Chicago', 'America/Denver', 'America/Halifax', 'America/Lima',
+    'America/Los_Angeles', 'America/Mexico_City', 'America/New_York',
+    'America/Phoenix', 'America/Santiago', 'America/Sao_Paulo', 'America/Toronto',
+    'America/Vancouver', 'Asia/Bangkok', 'Asia/Dhaka', 'Asia/Dubai',
+    'Asia/Hong_Kong', 'Asia/Jakarta', 'Asia/Jerusalem', 'Asia/Karachi',
+    'Asia/Kathmandu', 'Asia/Kolkata', 'Asia/Kuala_Lumpur', 'Asia/Manila',
+    'Asia/Riyadh', 'Asia/Seoul', 'Asia/Shanghai', 'Asia/Singapore',
+    'Asia/Taipei', 'Asia/Tehran', 'Asia/Tokyo', 'Atlantic/Azores',
+    'Australia/Adelaide', 'Australia/Brisbane', 'Australia/Darwin',
+    'Australia/Melbourne', 'Australia/Perth', 'Australia/Sydney',
+    'Europe/Amsterdam', 'Europe/Athens', 'Europe/Berlin', 'Europe/Brussels',
+    'Europe/Bucharest', 'Europe/Budapest', 'Europe/Copenhagen', 'Europe/Dublin',
+    'Europe/Helsinki', 'Europe/Istanbul', 'Europe/Kyiv', 'Europe/Lisbon',
+    'Europe/London', 'Europe/Madrid', 'Europe/Moscow', 'Europe/Oslo',
+    'Europe/Paris', 'Europe/Prague', 'Europe/Rome', 'Europe/Stockholm',
+    'Europe/Vienna', 'Europe/Warsaw', 'Europe/Zurich', 'Pacific/Auckland',
+    'Pacific/Fiji', 'Pacific/Honolulu', 'Pacific/Midway', 'Pacific/Tahiti'
+  ];
+
+  function localTimeZone() {
+    try {
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) return tz;
+    } catch (e) { /* fall through to UTC */ }
+    return 'UTC';
+  }
+
+  function availableTimeZones() {
+    try {
+      if (typeof Intl.supportedValuesOf === 'function') {
+        var list = Intl.supportedValuesOf('timeZone');
+        if (list && list.length) return list.slice();
+      }
+    } catch (e) { /* fall through to the curated list */ }
+    return FALLBACK_TIME_ZONES.slice();
+  }
+
+  /* "America/Argentina/Buenos_Aires" → "America" (optgroup label). */
+  function timeZoneGroup(zone) {
+    var i = zone.indexOf('/');
+    return i === -1 ? 'Other' : zone.slice(0, i);
+  }
+
+  function timeZoneOption(zone, label) {
+    var opt = document.createElement('option');
+    opt.value = zone;
+    opt.textContent = label || zone;
+    return opt;
+  }
+
+  /* Device zone first and selected, then UTC, then every IANA zone grouped by
+   * region. Populated from Intl so the list stays current without a hard-coded
+   * table in the HTML. */
+  function populateTimeZones() {
+    var sel = timezoneEl;
+    var local = localTimeZone();
+    sel.textContent = '';
+
+    sel.appendChild(timeZoneOption(local, local + ' (your device)'));
+    if (local !== 'UTC') {
+      sel.appendChild(timeZoneOption('UTC', 'UTC (Coordinated Universal Time)'));
+    }
+
+    var zones = availableTimeZones();
+    if (zones.indexOf(local) === -1) zones.push(local);
+    zones = zones.filter(function (z, i) {
+      return z && zones.indexOf(z) === i && z !== local && z !== 'UTC';
+    });
+    zones.sort();
+
+    var groups = {};
+    zones.forEach(function (z) {
+      var g = timeZoneGroup(z);
+      (groups[g] = groups[g] || []).push(z);
+    });
+    Object.keys(groups).sort().forEach(function (g) {
+      var og = document.createElement('optgroup');
+      og.label = g;
+      groups[g].forEach(function (z) { og.appendChild(timeZoneOption(z)); });
+      sel.appendChild(og);
+    });
+
+    sel.value = local;
+  }
+
+  /* Wall-clock components a Date shows in `timeZone`. */
+  function zoneParts(date, timeZone) {
+    var parts = {};
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+    }).formatToParts(date).forEach(function (p) {
+      if (p.type !== 'literal') parts[p.type] = Number(p.value);
+    });
+    return parts;
+  }
+
+  /* Interpret year-month-day h:mi[:ss] as wall-clock time in `timeZone` and
+   * return the matching Date. Repeats because the first guess can land on the
+   * far side of a DST transition. */
+  function zonedTimeToDate(year, month, day, hour, minute, timeZone, second) {
+    var target = Date.UTC(year, month - 1, day, hour, minute, second || 0);
+    var ts = target;
+    for (var i = 0; i < 3; i++) {
+      var p = zoneParts(new Date(ts), timeZone);
+      var asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+      var delta = target - asUTC;
+      if (delta === 0) break;
+      ts += delta;
+    }
+    return new Date(ts);
+  }
+
+  /* Calendar-day identity for a Date in a zone (browser zone when omitted). */
+  function dayKey(date, timeZone) {
+    if (!timeZone) return date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
+    var p = zoneParts(date, timeZone);
+    return p.year + '-' + p.month + '-' + p.day;
+  }
+
   function setStatus(msg, isError) {
     var el = $('status-msg');
     el.textContent = msg;
@@ -61,6 +193,7 @@
   var startTimeEl = $('start-time');
   var endDateEl = $('end-date');
   var endTimeEl = $('end-time');
+  var timezoneEl = $('timezone');
 
   function defaultFormDates() {
     var now = new Date();
@@ -74,6 +207,8 @@
     var allDay = $('all-day').checked;
     $('field-start-time').hidden = allDay;
     $('field-end-time').hidden = allDay;
+    /* All-day events are date-only, so a time zone would be misleading. */
+    $('field-timezone').hidden = allDay;
     if (allDay && endDateEl.value && startDateEl.value && endDateEl.value <= startDateEl.value) {
       endDateEl.value = addDays(startDateEl.value, 1);
     }
@@ -115,9 +250,17 @@
     } else {
       if (!startDateEl.value) throw new Error('Pick a start date.');
       if (!startTimeEl.value) throw new Error('Pick a start time.');
-      opts.start = new Date(startDateEl.value + 'T' + startTimeEl.value);
+      /* Read the typed wall-clock time in the chosen zone. 'UTC' is emitted as
+       * a plain ...Z timestamp (no TZID); every other zone gets a TZID. */
+      var tz = timezoneEl.value || localTimeZone();
+      if (tz !== 'UTC') opts.timezone = tz;
+      var sd = parseDateInput(startDateEl.value);
+      var st = parseTimeInput(startTimeEl.value);
+      opts.start = zonedTimeToDate(sd.year, sd.month, sd.day, st.hour, st.minute, tz);
       if (endDateEl.value && endTimeEl.value) {
-        opts.end = new Date(endDateEl.value + 'T' + endTimeEl.value);
+        var ed = parseDateInput(endDateEl.value);
+        var et = parseTimeInput(endTimeEl.value);
+        opts.end = zonedTimeToDate(ed.year, ed.month, ed.day, et.hour, et.minute, tz);
         if (opts.end <= opts.start) throw new Error('The end date/time must be after the start.');
       } else {
         opts.end = new Date(opts.start.getTime() + 60 * 60000); /* default: 1 hour */
@@ -147,8 +290,11 @@
         if (allDay) {
           parts.push('UNTIL=' + IcsGenerator.formatDateUTC({ year: up.year, month: up.month, day: up.day }));
         } else {
-          /* end of that day, UTC */
-          parts.push('UNTIL=' + IcsGenerator.formatDateTimeUTC(new Date(Date.UTC(up.year, up.month - 1, up.day, 23, 59, 59))));
+          /* End of that day in the event's zone, converted to UTC (UNTIL for a
+           * timed rule must be a UTC instant). */
+          parts.push('UNTIL=' + IcsGenerator.formatDateTimeUTC(
+            zonedTimeToDate(up.year, up.month, up.day, 23, 59, opts.timezone || 'UTC', 59)
+          ));
         }
       }
       opts.rrule = parts.join(';');
@@ -210,17 +356,21 @@
         }
       }
     } else {
-      var startLabel = ev.start.toLocaleString(undefined, {
+      var startOpts = {
         weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-      });
+      };
+      if (o.timezone) startOpts.timeZone = o.timezone;
+      var startLabel = ev.start.toLocaleString(undefined, startOpts);
       if (ev.end) {
-        var sameDay = ev.start.toDateString() === ev.end.toDateString();
+        var sameDay = dayKey(ev.start, o.timezone) === dayKey(ev.end, o.timezone);
         var endOpts = sameDay
           ? { hour: 'numeric', minute: '2-digit' }
           : { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+        if (o.timezone) endOpts.timeZone = o.timezone;
         startLabel += ' – ' + ev.end.toLocaleString(undefined, endOpts);
       }
       bits.push(startLabel);
+      if (o.timezone) bits.push(o.timezone);
     }
     var rule = /FREQ=([A-Z]+)/.exec(o.rrule || '');
     if (rule) bits.push('Repeats ' + rule[1].toLowerCase());
@@ -385,6 +535,7 @@
   /* ---------- init ---------- */
 
   defaultFormDates();
+  populateTimeZones();
   syncAllDayUI();
   syncRecurUI();
   syncReminderUI();
