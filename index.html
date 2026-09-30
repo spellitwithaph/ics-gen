@@ -285,38 +285,44 @@
   <section class="panel faq" aria-labelledby="faq-heading">
     <h2 id="faq-heading">Frequently asked questions</h2>
 
-    <h3>What is an .ics file?</h3>
-    <p>An <code>.ics</code> file is the standard calendar format (RFC 5545) used to
-    move events between calendars. Import it into Google Calendar, Outlook, Apple
-    Calendar, or Thunderbird and the event appears in your calendar.</p>
+    <details class="faq-item">
+      <summary>What is an .ics file?</summary>
+      <p>An <code>.ics</code> file is the standard calendar format (RFC 5545) used to
+      move events between calendars. Import it into Google Calendar, Outlook, Apple
+      Calendar, or Thunderbird and the event appears in your calendar.</p>
+    </details>
 
-    <h3>Is ICS Generator free?</h3>
-    <p>Yes — free and open source (MIT), no sign-up and no account required.</p>
+    <details class="faq-item">
+      <summary>Is ICS Generator free?</summary>
+      <p>Yes — free and open source (MIT), no sign-up and no account required.</p>
+    </details>
 
-    <h3>Does ICS Generator upload my event data?</h3>
-    <p>No. The page runs 100% in your browser — nothing you type ever leaves
-    your device. The hosted site uses cookie-free
-    <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
-    to count visits (aggregate page views, referrers, and countries); your
-    events and form data are never collected or sent anywhere.</p>
+    <details class="faq-item">
+      <summary>Does ICS Generator upload my event data?</summary>
+      <p>No. The page runs 100% in your browser — nothing you type ever leaves
+      your device. The hosted site uses cookie-free
+      <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
+      to count visits (aggregate page views, referrers, and countries); your
+      events and form data are never collected or sent anywhere.</p>
+    </details>
 
-    <h3>Does ICS Generator work offline?</h3>
-    <p>Yes. Open <code>index.html</code> directly from disk — zero requests of
-    any kind. Hosted copies need no network for the app itself; the only extra
-    request is Cloudflare's cookie-free visit counter.</p>
+    <details class="faq-item">
+      <summary>Does ICS Generator work offline?</summary>
+      <p>Yes. Open <code>index.html</code> directly from disk — zero requests of
+      any kind. Hosted copies need no network for the app itself; the only extra
+      request is Cloudflare's cookie-free visit counter.</p>
+    </details>
 
-    <h3>Can I create recurring events or reminders?</h3>
-    <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
-    plus reminders set per event — minutes, hours, or days before the start — and
-    all-day, timed, and multi-day events with attendees. In one .ics file each event
-    carries its own reminder.</p>
+    <details class="faq-item">
+      <summary>Can I create recurring events or reminders?</summary>
+      <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
+      plus reminders set per event — minutes, hours, or days before the start — and
+      all-day, timed, and multi-day events with attendees. In one .ics file each event
+      carries its own reminder.</p>
+    </details>
   </section>
 
   <footer>
-    Events are generated entirely in your browser and never leave this page.
-    The site itself uses cookie-free
-    <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
-    to count visits — aggregate page views only, never your event data.
     Validate output at <a href="https://icalendar.org/validator.html" target="_blank" rel="noopener noreferrer">icalendar.org</a>.
   </footer>
 </div>

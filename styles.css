@@ -240,6 +240,7 @@ footer a { color: var(--accent); }
 
 [hidden] { display: none !important; }
 
-.panel.faq h3 { margin: 18px 0 4px; font-size: 14px; }
-.panel.faq h3:first-of-type { margin-top: 0; }
-.panel.faq p { margin: 0 0 4px; color: var(--muted); font-size: 13.5px; }
+.panel.faq .faq-item { border-top: 1px solid var(--border); }
+.panel.faq .faq-item:first-of-type { border-top: 0; }
+.panel.faq summary { padding: 10px 0; }
+.panel.faq .faq-item p { margin: 0 0 12px; color: var(--muted); font-size: 13.5px; }
