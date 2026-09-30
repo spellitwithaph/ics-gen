@@ -15,6 +15,10 @@
 
   var cal = new IcsGenerator.Calendar({ name: 'My Events' });
 
+  /* Time-zone math lives in ics.js so the importer can share it. */
+  var zoneParts = IcsGenerator.zoneParts;
+  var zonedTimeToDate = IcsGenerator.zonedTimeToDate;
+
   /* ---------- helpers ---------- */
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -143,35 +147,6 @@
     });
 
     sel.value = local;
-  }
-
-  /* Wall-clock components a Date shows in `timeZone`. */
-  function zoneParts(date, timeZone) {
-    var parts = {};
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: timeZone,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
-    }).formatToParts(date).forEach(function (p) {
-      if (p.type !== 'literal') parts[p.type] = Number(p.value);
-    });
-    return parts;
-  }
-
-  /* Interpret year-month-day h:mi[:ss] as wall-clock time in `timeZone` and
-   * return the matching Date. Repeats because the first guess can land on the
-   * far side of a DST transition. */
-  function zonedTimeToDate(year, month, day, hour, minute, timeZone, second) {
-    var target = Date.UTC(year, month - 1, day, hour, minute, second || 0);
-    var ts = target;
-    for (var i = 0; i < 3; i++) {
-      var p = zoneParts(new Date(ts), timeZone);
-      var asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-      var delta = target - asUTC;
-      if (delta === 0) break;
-      ts += delta;
-    }
-    return new Date(ts);
   }
 
   /* Calendar-day identity for a Date in a zone (browser zone when omitted). */
@@ -311,7 +286,250 @@
       opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
     }
 
+    var orgName = $('organizer-name').value.trim();
+    var orgEmail = $('organizer-email').value.trim();
+    if (orgEmail || orgName) {
+      if (!orgEmail) throw new Error('Add an email address for the organizer (or clear the name).');
+      opts.organizer = { email: orgEmail };
+      if (orgName) opts.organizer.name = orgName;
+    }
+    var attendees = readAttendees();
+    if (attendees.length) opts.attendees = attendees;
+
     return opts;
+  }
+
+  function readAttendees() {
+    var rows = document.querySelectorAll('#attendee-list .attendee-row');
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var name = row.querySelector('.att-name').value.trim();
+      var email = row.querySelector('.att-email').value.trim();
+      var role = row.querySelector('.att-role').value;
+      var status = row.querySelector('.att-status').value;
+      var rsvp = row.querySelector('.att-rsvp-input').checked;
+      if (!name && !email && !rsvp) continue; /* untouched row */
+      if (!email) throw new Error('Attendee ' + (i + 1) + ' needs an email address.');
+      var a = { email: email };
+      if (name) a.name = name;
+      if (role) a.role = role;
+      if (status) a.status = status;
+      if (rsvp) a.rsvp = true;
+      out.push(a);
+    }
+    return out;
+  }
+
+  /* ---------- filling the form from imported data ---------- */
+
+  function isoFromParts(p) { return p.year + '-' + pad2(p.month) + '-' + pad2(p.day); }
+
+  function setDateInput(el, parts) {
+    if (parts && parts.year) el.value = isoFromParts(parts);
+  }
+
+  function hasZone(tz) {
+    for (var i = 0; i < timezoneEl.options.length; i++) {
+      if (timezoneEl.options[i].value === tz) return true;
+    }
+    return false;
+  }
+
+  /* The zone to show an imported instant in: the event's own zone when the
+   * picker knows it, otherwise the device zone. */
+  function zoneForForm(tz) {
+    if (tz && hasZone(tz)) return tz;
+    return localTimeZone();
+  }
+
+  /* Only the form's simple subset (FREQ/INTERVAL/UNTIL) is representable;
+   * anything else (COUNT, BYDAY, …) is preserved on the event but not loaded. */
+  function simpleRule(rule, allDay, tz) {
+    var out = { freq: null, interval: 1, until: '' };
+    var parts = String(rule).split(';');
+    for (var i = 0; i < parts.length; i++) {
+      var kv = parts[i].split('=');
+      var k = (kv[0] || '').toUpperCase();
+      var v = kv[1] || '';
+      if (k === 'FREQ') {
+        if (!/^(DAILY|WEEKLY|MONTHLY|YEARLY)$/.test(v)) return null;
+        out.freq = v;
+      } else if (k === 'INTERVAL') {
+        out.interval = parseInt(v, 10) || 1;
+      } else if (k === 'UNTIL') {
+        var u = untilToDate(v, allDay, tz);
+        if (!u) return null;
+        out.until = u;
+      } else {
+        return null;
+      }
+    }
+    return out.freq ? out : null;
+  }
+
+  /* RRULE UNTIL → a value for the date input. */
+  function untilToDate(value, allDay, tz) {
+    var m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(value);
+    if (!m) return '';
+    if (!m[4]) return m[1] + '-' + m[2] + '-' + m[3];
+    var date = m[7]
+      ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)))
+      : new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    var p = zoneParts(date, m[7] ? 'UTC' : (tz || localTimeZone()));
+    return isoFromParts(p);
+  }
+
+  /* A relative "before" trigger (-PT10M / -P1D) → the reminder controls. */
+  function parseTrigger(trigger) {
+    var s = String(trigger == null ? '' : trigger).trim();
+    if (s.charAt(0) !== '-') return null;
+    var m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(s.slice(1));
+    if (!m) return null;
+    if (m[1]) return { value: parseInt(m[1], 10), unit: 'days' };
+    if (m[2]) return { value: parseInt(m[2], 10), unit: 'hours' };
+    if (m[3]) return { value: parseInt(m[3], 10), unit: 'minutes' };
+    return null;
+  }
+
+  var ATTENDEE_ROLES = [
+    ['REQ-PARTICIPANT', 'Required'],
+    ['OPT-PARTICIPANT', 'Optional'],
+    ['NON-PARTICIPANT', 'Non-participant'],
+    ['CHAIR', 'Chair']
+  ];
+  var ATTENDEE_STATUSES = [
+    ['NEEDS-ACTION', 'No reply'],
+    ['ACCEPTED', 'Accepted'],
+    ['DECLINED', 'Declined'],
+    ['TENTATIVE', 'Tentative']
+  ];
+
+  function attendeeField(type, cls, placeholder, aria, value) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field';
+    var input = document.createElement('input');
+    input.type = type;
+    input.className = cls;
+    input.placeholder = placeholder;
+    input.setAttribute('aria-label', aria);
+    input.autocomplete = 'off';
+    input.value = value;
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function attendeeSelect(cls, aria, options, value, fallback) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field';
+    var sel = document.createElement('select');
+    sel.className = cls;
+    sel.setAttribute('aria-label', aria);
+    options.forEach(function (opt) {
+      var o = document.createElement('option');
+      o.value = opt[0];
+      o.textContent = opt[1];
+      sel.appendChild(o);
+    });
+    var known = options.some(function (o) { return o[0] === value; });
+    sel.value = known ? value : fallback;
+    wrap.appendChild(sel);
+    return wrap;
+  }
+
+  function addAttendeeRow(a) {
+    a = a || {};
+    var box = $('attendee-list');
+    var row = document.createElement('div');
+    row.className = 'attendee-row';
+
+    row.appendChild(attendeeField('text', 'att-name', 'Name', 'Attendee name', a.name || ''));
+    row.appendChild(attendeeField('email', 'att-email', 'Email', 'Attendee email', a.email || ''));
+    row.appendChild(attendeeSelect('att-role', 'Attendee role', ATTENDEE_ROLES, a.role, 'REQ-PARTICIPANT'));
+    row.appendChild(attendeeSelect('att-status', 'Attendee status', ATTENDEE_STATUSES, a.status, 'NEEDS-ACTION'));
+
+    var rsvpLabel = document.createElement('label');
+    rsvpLabel.className = 'att-rsvp';
+    var rsvp = document.createElement('input');
+    rsvp.type = 'checkbox';
+    rsvp.className = 'att-rsvp-input';
+    rsvp.checked = !!a.rsvp;
+    rsvpLabel.appendChild(rsvp);
+    rsvpLabel.appendChild(document.createTextNode('RSVP'));
+    row.appendChild(rsvpLabel);
+
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn ghost att-remove';
+    remove.textContent = 'Remove';
+    remove.setAttribute('aria-label', 'Remove attendee');
+    remove.addEventListener('click', function () { box.removeChild(row); });
+    row.appendChild(remove);
+
+    box.appendChild(row);
+  }
+
+  function setOrganizer(org) {
+    $('organizer-name').value = org && org.name ? org.name : '';
+    $('organizer-email').value = org && org.email ? org.email : '';
+  }
+
+  function setAttendees(list) {
+    var box = $('attendee-list');
+    box.textContent = '';
+    (list || []).forEach(addAttendeeRow);
+  }
+
+  $('add-attendee-btn').addEventListener('click', function () {
+    addAttendeeRow();
+    var rows = document.querySelectorAll('#attendee-list .attendee-row');
+    var last = rows[rows.length - 1];
+    if (last) last.querySelector('.att-name').focus();
+  });
+
+  function populateForm(ev) {
+    $('title').value = ev.title || '';
+    $('description').value = ev.description || '';
+    $('location').value = ev.location || '';
+    $('url').value = ev.url || '';
+    $('categories').value = (ev.categories || []).join(', ');
+    $('status').value = /^(CONFIRMED|TENTATIVE|CANCELLED)$/.test(ev.status || '') ? ev.status : 'CONFIRMED';
+
+    var allDay = !!ev.allDay;
+    $('all-day').checked = allDay;
+
+    if (allDay) {
+      setDateInput(startDateEl, ev.start);
+      if (ev.end) setDateInput(endDateEl, ev.end);
+    } else {
+      var zone = zoneForForm(ev.timezone);
+      var sp = zoneParts(ev.start, zone);
+      startDateEl.value = isoFromParts(sp);
+      startTimeEl.value = pad2(sp.hour) + ':' + pad2(sp.minute);
+      var end = ev.end || new Date(ev.start.getTime() + 60 * 60000);
+      var ep = zoneParts(end, zone);
+      endDateEl.value = isoFromParts(ep);
+      endTimeEl.value = pad2(ep.hour) + ':' + pad2(ep.minute);
+      timezoneEl.value = zone;
+    }
+    syncAllDayUI();
+
+    var rule = ev.rrule ? simpleRule(ev.rrule, allDay, timezoneEl.value) : null;
+    $('recur-freq').value = rule ? rule.freq : 'NONE';
+    $('recur-interval').value = rule ? rule.interval : 1;
+    $('recur-until').value = rule ? rule.until : '';
+    syncRecurUI();
+
+    var alarm = ev.alarms && ev.alarms[0] ? parseTrigger(ev.alarms[0].trigger) : null;
+    $('reminder-toggle').value = alarm ? 'on' : 'off';
+    if (alarm) {
+      $('reminder-value').value = alarm.value;
+      $('reminder-unit').value = alarm.unit;
+    }
+    syncReminderUI();
+
+    setOrganizer(ev.organizer);
+    setAttendees(ev.attendees);
   }
 
   /* ---------- rendering ---------- */
@@ -380,6 +598,10 @@
       }).join(' & '));
     }
     if (o.location) bits.push(o.location);
+    if (o.organizer && o.organizer.email) bits.push('by ' + (o.organizer.name || o.organizer.email));
+    if (Array.isArray(o.attendees) && o.attendees.length) {
+      bits.push(o.attendees.length + (o.attendees.length === 1 ? ' attendee' : ' attendees'));
+    }
     return bits.join(' · ');
   }
 
@@ -426,8 +648,8 @@
     var has = cal.events.length > 0;
     $('download-btn').disabled = !has;
     $('copy-btn').disabled = !has;
-    /* Auto-show the preview once any event exists; collapse when the list empties. */
-    $('preview-box').open = has;
+    /* The preview starts expanded (see the `open` attribute in index.html) and
+     * never auto-collapses; the visitor can still toggle it. */
   }
 
   /* ---------- actions ---------- */
@@ -530,6 +752,190 @@
 
     render();
     setStatus('Loaded 3 sample events. Try downloading the .ics and importing it.');
+  });
+
+  /* ---------- importing .ics ---------- */
+
+  var MAX_IMPORT_CHARS = 2 * 1024 * 1024;
+
+  function setImportStatus(msg, isError) {
+    var el = $('import-status');
+    el.textContent = msg || '';
+    el.classList.toggle('error', !!isError);
+  }
+
+  function looksLikeEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '')); }
+  function looksLikeHttpUrl(s) { return /^https?:\/\//i.test(String(s || '')); }
+
+  /* Parsed event → addEvent options, dropping only what ics.js would reject so
+   * one bad field never costs the whole event. */
+  function importOptions(ev, warnings) {
+    var label = ev.title ? '"' + ev.title + '"' : 'An event';
+    var o = { title: ev.title || 'Untitled event' };
+    if (ev.uid) o.uid = ev.uid;
+    if (ev.allDay) {
+      o.allDay = true;
+      o.start = ev.start;
+      if (ev.end) o.end = ev.end;
+    } else {
+      o.start = ev.start;
+      if (ev.end) o.end = ev.end;
+      if (ev.timezone && ev.timezone !== 'UTC') o.timezone = ev.timezone;
+    }
+    if (ev.description) o.description = ev.description;
+    if (ev.location) o.location = ev.location;
+    if (ev.url) {
+      if (looksLikeHttpUrl(ev.url)) o.url = ev.url;
+      else warnings.push(label + ': dropped a web link that was not http(s).');
+    }
+    if (/^(CONFIRMED|TENTATIVE|CANCELLED)$/.test(ev.status || '')) o.status = ev.status;
+    if (ev.categories && ev.categories.length) o.categories = ev.categories;
+    if (ev.rrule) o.rrule = ev.rrule;
+    if (ev.alarms && ev.alarms.length) o.alarms = ev.alarms;
+    if (ev.organizer && ev.organizer.email) {
+      if (looksLikeEmail(ev.organizer.email)) {
+        o.organizer = { email: ev.organizer.email };
+        if (ev.organizer.name) o.organizer.name = ev.organizer.name;
+      } else {
+        warnings.push(label + ': dropped an organizer email that did not look valid.');
+      }
+    }
+    if (ev.attendees && ev.attendees.length) {
+      var keep = [];
+      ev.attendees.forEach(function (a) {
+        if (!looksLikeEmail(a.email)) {
+          warnings.push(label + ': dropped an attendee email that did not look valid.');
+          return;
+        }
+        var out = { email: a.email };
+        if (a.name) out.name = a.name;
+        if (a.role) out.role = a.role;
+        if (a.status) out.status = a.status;
+        if (a.rsvp) out.rsvp = true;
+        keep.push(out);
+      });
+      if (keep.length) o.attendees = keep;
+    }
+    if (ev.unsupported && ev.unsupported.length) {
+      warnings.push(label + ': ignored ' + ev.unsupported.join(', ') + '.');
+    }
+    return o;
+  }
+
+  function applyImport(text, sourceLabel) {
+    if (!text || !text.trim()) { setImportStatus('Nothing to import — the text was empty.', true); return; }
+    if (text.length > MAX_IMPORT_CHARS) { setImportStatus('That text is too large to import (over 2 MB).', true); return; }
+
+    var result;
+    try {
+      result = IcsGenerator.parse(text);
+    } catch (err) {
+      setImportStatus(err.message, true);
+      return;
+    }
+    if (!result.events.length) {
+      setImportStatus('No events found in ' + (sourceLabel || 'that text') + '.', true);
+      return;
+    }
+
+    var warnings = result.warnings.slice();
+    var added = 0;
+    result.events.forEach(function (ev) {
+      try {
+        cal.addEvent(importOptions(ev, warnings));
+        added++;
+      } catch (err) {
+        warnings.push('Skipped an event: ' + err.message);
+      }
+    });
+
+    if (added) {
+      render();
+      if (result.events.length === 1) populateForm(result.events[0]);
+    }
+
+    var msg = 'Imported ' + added + ' of ' + result.events.length +
+      ' event' + (result.events.length === 1 ? '' : 's');
+    if (sourceLabel) msg += ' from ' + sourceLabel;
+    msg += '.';
+    if (added && result.events.length === 1) msg += ' Fields loaded into the form above (the event is already in the list).';
+    if (warnings.length) {
+      msg += ' ' + warnings.length + ' warning' + (warnings.length === 1 ? '' : 's') +
+        ': ' + warnings.slice(0, 3).join(' ') + (warnings.length > 3 ? ' …' : '');
+    }
+    setImportStatus(msg, added === 0);
+    if (added) setStatus('Imported ' + added + ' event' + (added === 1 ? '' : 's') + '.');
+  }
+
+  function readImportFile(file) {
+    if (!file) return;
+    var name = String(file.name || '');
+    if (file.size > MAX_IMPORT_CHARS) {
+      setImportStatus('"' + name + '" is larger than 2 MB — refusing to parse it.', true);
+      return;
+    }
+    function done(text) { applyImport(text, '"' + name + '"'); }
+    function fail() { setImportStatus('Could not read "' + name + '".', true); }
+    if (typeof file.text === 'function') {
+      file.text().then(done, fail);
+    } else {
+      var reader = new FileReader();
+      reader.onload = function () { done(String(reader.result || '')); };
+      reader.onerror = fail;
+      reader.readAsText(file);
+    }
+  }
+
+  $('import-file').addEventListener('change', function (e) {
+    readImportFile(e.target.files && e.target.files[0]);
+    e.target.value = ''; /* allow re-importing the same file */
+  });
+
+  $('import-text-btn').addEventListener('click', function () {
+    applyImport($('import-text').value, 'pasted text');
+  });
+  $('import-text').addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      applyImport($('import-text').value, 'pasted text');
+    }
+  });
+
+  var dropZone = $('drop-zone');
+  ['dragenter', 'dragover'].forEach(function (type) {
+    dropZone.addEventListener(type, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add('dragging');
+    });
+  });
+  ['dragleave', 'dragend'].forEach(function (type) {
+    dropZone.addEventListener(type, function (e) {
+      e.preventDefault();
+      dropZone.classList.remove('dragging');
+    });
+  });
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('dragging');
+    var dt = e.dataTransfer;
+    if (!dt) return;
+    var file = dt.files && dt.files[0];
+    if (file) { readImportFile(file); return; }
+    var pasted = dt.getData ? dt.getData('text') : '';
+    if (pasted) applyImport(pasted, 'dropped text');
+    else setImportStatus('Drop an .ics file, or paste its text below.', true);
+  });
+  /* A file dropped outside the zone should not make the browser navigate to it;
+   * text dropped on an input keeps its native behaviour. */
+  function isTextTarget(el) { return !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT'); }
+  window.addEventListener('dragover', function (e) {
+    if (!isTextTarget(e.target)) e.preventDefault();
+  });
+  window.addEventListener('drop', function (e) {
+    if (isTextTarget(e.target) || dropZone.contains(e.target)) return;
+    e.preventDefault();
   });
 
   /* ---------- init ---------- */
