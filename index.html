@@ -232,6 +232,27 @@
           </div>
         </div>
 
+        <fieldset class="contact-group">
+          <legend>Organizer</legend>
+          <div class="field-row">
+            <div class="field">
+              <label for="organizer-name">Name</label>
+              <input id="organizer-name" type="text" placeholder="Pat Manager">
+            </div>
+            <div class="field">
+              <label for="organizer-email">Email</label>
+              <input id="organizer-email" type="email" placeholder="pat@example.com">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="contact-group">
+          <legend>Attendees</legend>
+          <div id="attendee-list"></div>
+          <button id="add-attendee-btn" class="btn ghost" type="button">Add attendee</button>
+          <p class="hint">Each attendee is written as an <code>ATTENDEE:mailto:</code> line.</p>
+        </fieldset>
+
         <div class="form-actions">
           <button id="add-btn" type="submit" class="btn primary">Add to .ics</button>
           <button id="download-btn" class="btn" type="button" disabled>Download .ics</button>

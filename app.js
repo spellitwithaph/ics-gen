@@ -286,7 +286,39 @@
       opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
     }
 
+    var orgName = $('organizer-name').value.trim();
+    var orgEmail = $('organizer-email').value.trim();
+    if (orgEmail || orgName) {
+      if (!orgEmail) throw new Error('Add an email address for the organizer (or clear the name).');
+      opts.organizer = { email: orgEmail };
+      if (orgName) opts.organizer.name = orgName;
+    }
+    var attendees = readAttendees();
+    if (attendees.length) opts.attendees = attendees;
+
     return opts;
+  }
+
+  function readAttendees() {
+    var rows = document.querySelectorAll('#attendee-list .attendee-row');
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var name = row.querySelector('.att-name').value.trim();
+      var email = row.querySelector('.att-email').value.trim();
+      var role = row.querySelector('.att-role').value;
+      var status = row.querySelector('.att-status').value;
+      var rsvp = row.querySelector('.att-rsvp-input').checked;
+      if (!name && !email && !rsvp) continue; /* untouched row */
+      if (!email) throw new Error('Attendee ' + (i + 1) + ' needs an email address.');
+      var a = { email: email };
+      if (name) a.name = name;
+      if (role) a.role = role;
+      if (status) a.status = status;
+      if (rsvp) a.rsvp = true;
+      out.push(a);
+    }
+    return out;
   }
 
   /* ---------- filling the form from imported data ---------- */
@@ -360,6 +392,101 @@
     return null;
   }
 
+  var ATTENDEE_ROLES = [
+    ['REQ-PARTICIPANT', 'Required'],
+    ['OPT-PARTICIPANT', 'Optional'],
+    ['NON-PARTICIPANT', 'Non-participant'],
+    ['CHAIR', 'Chair']
+  ];
+  var ATTENDEE_STATUSES = [
+    ['NEEDS-ACTION', 'No reply'],
+    ['ACCEPTED', 'Accepted'],
+    ['DECLINED', 'Declined'],
+    ['TENTATIVE', 'Tentative']
+  ];
+
+  function attendeeField(type, cls, placeholder, aria, value) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field';
+    var input = document.createElement('input');
+    input.type = type;
+    input.className = cls;
+    input.placeholder = placeholder;
+    input.setAttribute('aria-label', aria);
+    input.autocomplete = 'off';
+    input.value = value;
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function attendeeSelect(cls, aria, options, value, fallback) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field';
+    var sel = document.createElement('select');
+    sel.className = cls;
+    sel.setAttribute('aria-label', aria);
+    options.forEach(function (opt) {
+      var o = document.createElement('option');
+      o.value = opt[0];
+      o.textContent = opt[1];
+      sel.appendChild(o);
+    });
+    var known = options.some(function (o) { return o[0] === value; });
+    sel.value = known ? value : fallback;
+    wrap.appendChild(sel);
+    return wrap;
+  }
+
+  function addAttendeeRow(a) {
+    a = a || {};
+    var box = $('attendee-list');
+    var row = document.createElement('div');
+    row.className = 'attendee-row';
+
+    row.appendChild(attendeeField('text', 'att-name', 'Name', 'Attendee name', a.name || ''));
+    row.appendChild(attendeeField('email', 'att-email', 'Email', 'Attendee email', a.email || ''));
+    row.appendChild(attendeeSelect('att-role', 'Attendee role', ATTENDEE_ROLES, a.role, 'REQ-PARTICIPANT'));
+    row.appendChild(attendeeSelect('att-status', 'Attendee status', ATTENDEE_STATUSES, a.status, 'NEEDS-ACTION'));
+
+    var rsvpLabel = document.createElement('label');
+    rsvpLabel.className = 'att-rsvp';
+    var rsvp = document.createElement('input');
+    rsvp.type = 'checkbox';
+    rsvp.className = 'att-rsvp-input';
+    rsvp.checked = !!a.rsvp;
+    rsvpLabel.appendChild(rsvp);
+    rsvpLabel.appendChild(document.createTextNode('RSVP'));
+    row.appendChild(rsvpLabel);
+
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn ghost att-remove';
+    remove.textContent = 'Remove';
+    remove.setAttribute('aria-label', 'Remove attendee');
+    remove.addEventListener('click', function () { box.removeChild(row); });
+    row.appendChild(remove);
+
+    box.appendChild(row);
+  }
+
+  function setOrganizer(org) {
+    $('organizer-name').value = org && org.name ? org.name : '';
+    $('organizer-email').value = org && org.email ? org.email : '';
+  }
+
+  function setAttendees(list) {
+    var box = $('attendee-list');
+    box.textContent = '';
+    (list || []).forEach(addAttendeeRow);
+  }
+
+  $('add-attendee-btn').addEventListener('click', function () {
+    addAttendeeRow();
+    var rows = document.querySelectorAll('#attendee-list .attendee-row');
+    var last = rows[rows.length - 1];
+    if (last) last.querySelector('.att-name').focus();
+  });
+
   function populateForm(ev) {
     $('title').value = ev.title || '';
     $('description').value = ev.description || '';
@@ -400,6 +527,9 @@
       $('reminder-unit').value = alarm.unit;
     }
     syncReminderUI();
+
+    setOrganizer(ev.organizer);
+    setAttendees(ev.attendees);
   }
 
   /* ---------- rendering ---------- */
@@ -468,6 +598,10 @@
       }).join(' & '));
     }
     if (o.location) bits.push(o.location);
+    if (o.organizer && o.organizer.email) bits.push('by ' + (o.organizer.name || o.organizer.email));
+    if (Array.isArray(o.attendees) && o.attendees.length) {
+      bits.push(o.attendees.length + (o.attendees.length === 1 ? ' attendee' : ' attendees'));
+    }
     return bits.join(' · ');
   }
 

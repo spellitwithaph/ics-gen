@@ -5,11 +5,12 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Generate `.ics` files with a few lines of plain JavaScript
 - Pick a **time zone** per event in the demo form — defaults to your device's zone, with `UTC` and every IANA zone available
 - **Import an existing `.ics`** by dropping a file, choosing one, or pasting text — parsed locally in the browser, never uploaded
+- Add an **organizer** and any number of **attendees** (name, email, role, reply status, RSVP)
 - Download them with a Blob URL (works on `file://` too)
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-30T00:28:43Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-30T00:31:56Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -64,6 +65,10 @@ to the list and preview; when the input holds exactly one event its fields are
 also loaded into the form for editing. Anything the form cannot represent
 (`EXDATE`, `COUNT`, unknown zones, …) is kept where possible and reported as a
 warning.
+
+The **Organizer** and **Attendees** fields write `ORGANIZER` and `ATTENDEE`
+lines. Add as many attendees as you need and set each one's role, reply status,
+and RSVP flag; imported files fill these fields automatically.
 
 ## Hosting on any static site
 
