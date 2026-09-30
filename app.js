@@ -851,7 +851,12 @@
 
     if (added) {
       render();
-      if (result.events.length === 1) populateForm(result.events[0]);
+      /* Collapse the panel so the (now populated) form is pulled into view. */
+      $('import-box').open = false;
+      if (result.events.length === 1) {
+        populateForm(result.events[0]);
+        $('title').focus();
+      }
     }
 
     var msg = 'Imported ' + added + ' of ' + result.events.length +

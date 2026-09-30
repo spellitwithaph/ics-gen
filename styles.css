@@ -120,7 +120,8 @@ textarea { resize: vertical; }
 .drop-zone strong { color: var(--text); font-size: 14px; }
 .drop-zone.dragging { border-color: var(--accent); background: var(--accent-soft); }
 #import-text { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-#import-status { margin-left: 4px; }
+#import-status { margin: 0 0 14px; }
+#import-status:empty { display: none; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-row.tri { grid-template-columns: repeat(3, 1fr); }
