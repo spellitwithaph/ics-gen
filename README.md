@@ -10,7 +10,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-30T01:25:27Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-30T01:41:24Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -63,8 +63,8 @@ and click **Import pasted text** (Ctrl/⌘+Enter also works). Reading happens
 entirely in the browser — the file is never uploaded. Every `VEVENT` is added
 to the list and preview; when the input holds exactly one event its fields are
 also loaded into the form for editing. Anything the form cannot represent
-(`EXDATE`, `COUNT`, unknown zones, …) is kept where possible and reported as a
-warning.
+(`EXDATE`, `COUNT`, unknown zones, …) is kept where possible; unknown properties
+are ignored silently.
 
 The **Organizer** and **Attendees** fields write `ORGANIZER` and `ATTENDEE`
 lines. Add as many attendees as you need and set each one's role, reply status,

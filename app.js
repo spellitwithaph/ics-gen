@@ -810,10 +810,11 @@
   function looksLikeEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '')); }
   function looksLikeHttpUrl(s) { return /^https?:\/\//i.test(String(s || '')); }
 
-  /* Parsed event → addEvent options, dropping only what ics.js would reject so
-   * one bad field never costs the whole event. */
-  function importOptions(ev, warnings) {
-    var label = ev.title ? '"' + ev.title + '"' : 'An event';
+  /* Parsed event → addEvent options. A field ics.js would reject (a non-http
+   * link, a malformed address) is dropped rather than losing the whole event.
+   * Unknown properties are ignored silently — listing every X- header an
+   * Outlook invite carries is noise, not help. */
+  function importOptions(ev) {
     var o = { title: ev.title || 'Untitled event' };
     if (ev.uid) o.uid = ev.uid;
     if (ev.allDay) {
@@ -827,40 +828,27 @@
     }
     if (ev.description) o.description = ev.description;
     if (ev.location) o.location = ev.location;
-    if (ev.url) {
-      if (looksLikeHttpUrl(ev.url)) o.url = ev.url;
-      else warnings.push(label + ': dropped a web link that was not http(s).');
-    }
+    if (ev.url && looksLikeHttpUrl(ev.url)) o.url = ev.url;
     if (/^(CONFIRMED|TENTATIVE|CANCELLED)$/.test(ev.status || '')) o.status = ev.status;
     if (ev.categories && ev.categories.length) o.categories = ev.categories;
     if (ev.rrule) o.rrule = ev.rrule;
     if (ev.alarms && ev.alarms.length) o.alarms = ev.alarms;
-    if (ev.organizer && ev.organizer.email) {
-      if (looksLikeEmail(ev.organizer.email)) {
-        o.organizer = { email: ev.organizer.email };
-        if (ev.organizer.name) o.organizer.name = ev.organizer.name;
-      } else {
-        warnings.push(label + ': dropped an organizer email that did not look valid.');
-      }
+    if (ev.organizer && ev.organizer.email && looksLikeEmail(ev.organizer.email)) {
+      o.organizer = { email: ev.organizer.email };
+      if (ev.organizer.name) o.organizer.name = ev.organizer.name;
     }
     if (ev.attendees && ev.attendees.length) {
-      var keep = [];
-      ev.attendees.forEach(function (a) {
-        if (!looksLikeEmail(a.email)) {
-          warnings.push(label + ': dropped an attendee email that did not look valid.');
-          return;
-        }
-        var out = { email: a.email };
-        if (a.name) out.name = a.name;
-        if (a.role) out.role = a.role;
-        if (a.status) out.status = a.status;
-        if (a.rsvp) out.rsvp = true;
-        keep.push(out);
-      });
+      var keep = ev.attendees
+        .filter(function (a) { return looksLikeEmail(a.email); })
+        .map(function (a) {
+          var out = { email: a.email };
+          if (a.name) out.name = a.name;
+          if (a.role) out.role = a.role;
+          if (a.status) out.status = a.status;
+          if (a.rsvp) out.rsvp = true;
+          return out;
+        });
       if (keep.length) o.attendees = keep;
-    }
-    if (ev.unsupported && ev.unsupported.length) {
-      warnings.push(label + ': ignored ' + ev.unsupported.join(', ') + '.');
     }
     return o;
   }
@@ -881,15 +869,14 @@
       return;
     }
 
-    var warnings = result.warnings.slice();
     var added = 0;
     result.events.forEach(function (ev) {
+      /* Skip an event only if ics.js rejects it outright; the count below
+       * already tells the visitor when fewer events landed than were found. */
       try {
-        cal.addEvent(importOptions(ev, warnings));
+        cal.addEvent(importOptions(ev));
         added++;
-      } catch (err) {
-        warnings.push('Skipped an event: ' + err.message);
-      }
+      } catch (err) { /* ignore and continue */ }
     });
 
     if (added) {
@@ -905,13 +892,7 @@
     var msg = 'Imported ' + added + ' of ' + result.events.length +
       ' event' + (result.events.length === 1 ? '' : 's');
     if (sourceLabel) msg += ' from ' + sourceLabel;
-    msg += '.';
-    if (added && result.events.length === 1) msg += ' Fields loaded into the form above (the event is already in the list).';
-    if (warnings.length) {
-      msg += ' ' + warnings.length + ' warning' + (warnings.length === 1 ? '' : 's') +
-        ': ' + warnings.slice(0, 3).join(' ') + (warnings.length > 3 ? ' …' : '');
-    }
-    setImportStatus(msg, added === 0);
+    setImportStatus(msg + '.', added === 0);
     if (added) setStatus('Imported ' + added + ' event' + (added === 1 ? '' : 's') + '.');
   }
 
