@@ -190,6 +190,8 @@ textarea { resize: vertical; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { background: var(--accent-strong); }
 .btn.ghost { background: transparent; }
+.btn.copied { background: var(--accent); border-color: var(--accent); color: #fff; }
+#copy-btn { min-width: 92px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .toolbar {

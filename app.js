@@ -683,9 +683,25 @@
     setStatus('Download started.');
   });
 
+  var copyFlashTimer = null;
+
+  /* The toolbar button is far from the status line, so confirm the copy in the
+   * button label itself for a moment. */
+  function flashCopied() {
+    var btn = $('copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    if (copyFlashTimer) clearTimeout(copyFlashTimer);
+    copyFlashTimer = setTimeout(function () {
+      btn.textContent = 'Copy .ics';
+      btn.classList.remove('copied');
+      copyFlashTimer = null;
+    }, 1600);
+  }
+
   $('copy-btn').addEventListener('click', function () {
     var text = cal.toString();
-    function done() { setStatus('Copied to clipboard.'); }
+    function done() { setStatus('Copied to clipboard.'); flashCopied(); }
     function fallback() {
       var ta = document.createElement('textarea');
       ta.value = text;
