@@ -152,8 +152,8 @@
     return d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate());
   }
 
-  /* Wall-clock time in an IANA time zone, e.g. '20260115T120000' for America/New_York. */
-  function formatDateTimeInZone(date, timeZone) {
+  /* Wall-clock components a Date shows in an IANA zone, as numbers. */
+  function zoneParts(date, timeZone) {
     var parts = {};
     new Intl.DateTimeFormat('en-US', {
       timeZone: timeZone,
@@ -167,11 +167,33 @@
     })
       .formatToParts(date)
       .forEach(function (p) {
-        if (p.type !== 'literal') parts[p.type] = p.value;
+        if (p.type !== 'literal') parts[p.type] = Number(p.value);
       });
-    return (
-      parts.year + parts.month + parts.day + 'T' + parts.hour + parts.minute + parts.second
-    );
+    return parts;
+  }
+
+  /* Wall-clock time in an IANA time zone, e.g. '20260115T120000' for America/New_York. */
+  function formatDateTimeInZone(date, timeZone) {
+    var p = zoneParts(date, timeZone);
+    return p.year + pad2(p.month) + pad2(p.day) + 'T' + pad2(p.hour) + pad2(p.minute) + pad2(p.second);
+  }
+
+  /*
+   * Interpret year-month-day h:mi[:ss] as wall-clock time in `timeZone` and
+   * return the matching Date. Iterates because the first guess can land on the
+   * far side of a DST transition.
+   */
+  function zonedTimeToDate(year, month, day, hour, minute, timeZone, second) {
+    var target = Date.UTC(year, month - 1, day, hour, minute, second || 0);
+    var ts = target;
+    for (var i = 0; i < 3; i++) {
+      var p = zoneParts(new Date(ts), timeZone);
+      var asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+      var delta = target - asUTC;
+      if (delta === 0) break;
+      ts += delta;
+    }
+    return new Date(ts);
   }
 
   function isDateParts(v) {
@@ -458,7 +480,9 @@
     escapeText: escapeText,
     foldLines: foldLines,
     formatDateTimeUTC: formatDateTimeUTC,
-    formatDateUTC: formatDateUTC
+    formatDateUTC: formatDateUTC,
+    zoneParts: zoneParts,
+    zonedTimeToDate: zonedTimeToDate
   };
 
   if (typeof window !== 'undefined') window.IcsGenerator = api;

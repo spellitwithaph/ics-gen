@@ -4,11 +4,12 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 
 - Generate `.ics` files with a few lines of plain JavaScript
 - Pick a **time zone** per event in the demo form — defaults to your device's zone, with `UTC` and every IANA zone available
+- **Import an existing `.ics`** by dropping a file, choosing one, or pasting text — parsed locally in the browser, never uploaded
 - Download them with a Blob URL (works on `file://` too)
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-23T20:02:21Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-30T00:28:43Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -25,6 +26,7 @@ The only things a static host *can't* do are server-side tasks — e.g. emailing
 | File | Purpose |
 | --- | --- |
 | `ics.js` | The generator library (also usable as a Node module). No dependencies. |
+| `ics-parse.js` | Optional `.ics` reader (RFC 5545 text → event objects). Loaded after `ics.js`; extends the same global. No dependencies. |
 | `index.html` | A self-contained demo app: form → events list → download. |
 | `styles.css` | Styling for the demo app. |
 | `app.js` | Demo-app logic (kept in its own file so the page can enforce a strict CSP). |
@@ -53,6 +55,15 @@ zone your device reports (labelled "your device"). Pick `UTC` to emit a plain
 All-day events are date-only, so the field is hidden for them. The typed
 start/end times are read as wall-clock time in the chosen zone, so an event
 stays at the same local time across DST changes.
+
+To bring in an existing calendar, open **Import an .ics file (drop or paste
+text)** at the top of the form: drop a `.ics` file, pick one, or paste its text
+and click **Import pasted text** (Ctrl/⌘+Enter also works). Reading happens
+entirely in the browser — the file is never uploaded. Every `VEVENT` is added
+to the list and preview; when the input holds exactly one event its fields are
+also loaded into the form for editing. Anything the form cannot represent
+(`EXDATE`, `COUNT`, unknown zones, …) is kept where possible and reported as a
+warning.
 
 ## Hosting on any static site
 
@@ -138,6 +149,24 @@ Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `bo
 | `attendees` | `Array<{email, name?, role?, status?, rsvp?}>` | | Emitted as `ATTENDEE;CN=…;ROLE=…;PARTSTAT=…:mailto:…`. `email` is validated (non-empty local part + dotted domain, no whitespace); `name`, `role` and `status` must not contain control characters. |
 | `organizer` | `{email, name?}` | | Emitted as `ORGANIZER;CN=…:mailto:…`. `email` validated as above. |
 
+### `IcsGenerator.parse(text)` / `parseEvents(text)`
+
+Reads RFC 5545 text into plain objects (needs `ics-parse.js`; loaded after
+`ics.js` it extends the same global, and it also `require()`s in Node).
+
+```js
+const { calendar, events, warnings, counts } = IcsGenerator.parse(icsText);
+```
+
+`calendar` carries `X-WR-CALNAME`/`X-WR-CALDESC`; `events` is one object per
+`VEVENT` with `start`/`end` as `Date` or `{year, month, day}`, plus `allDay`,
+`timezone`, `rrule`, `alarms`, `organizer`, `attendees`, `categories`, and an
+`unsupported` list; `warnings` explains anything dropped or approximated.
+`parseEvents(text)` returns just the events. The reader handles line folding,
+quoted parameters, TEXT unescaping, `TZID` (IANA and common Windows/Outlook
+names), a `VTIMEZONE` fixed-offset fallback, `DURATION`, and all-day / floating
+/ UTC date-times. It never touches the network or the DOM.
+
 ### `IcsGenerator.download(filename, text)`
 
 Builds a Blob and triggers a file download in the browser. Pure client-side.
@@ -187,6 +216,11 @@ SQL injection) do not apply. What does apply is the client-side half of the indu
   `.ics` output, text values are escaped per RFC 5545 and residual C0 control
   characters are stripped, so input cannot inject extra lines or properties
   into the generated file.
+- **Import is data-only** *(OWASP Input Validation Cheat Sheet)* — `ics-parse.js`
+  never touches the network or the DOM; it caps input at 20,000 lines and 12
+  levels of nesting and returns plain data. The demo reads dropped/picked files
+  with `File.text()`/`FileReader` (2 MB cap) and renders every parsed value with
+  `textContent`, so a hostile `.ics` cannot inject markup or script.
 - **Content-Security-Policy** *(OWASP Top 10:2025 A02-Security Misconfiguration;
   OWASP CSP Cheat Sheet)* — a strict default-deny policy
   (`default-src 'none'`, `script-src 'self'`, no `'unsafe-inline'`) ships in a

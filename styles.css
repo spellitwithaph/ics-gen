@@ -92,6 +92,36 @@ main {
 textarea { resize: vertical; }
 .field .hint { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
 
+/* Import panel */
+#import-box {
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: #fbfcfe;
+}
+#import-box > summary { padding: 10px 0; }
+#import-box[open] > summary { margin-bottom: 12px; }
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  padding: 18px 12px;
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.drop-zone strong { color: var(--text); font-size: 14px; }
+.drop-zone.dragging { border-color: var(--accent); background: var(--accent-soft); }
+#import-text { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+#import-status { margin-left: 4px; }
+
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-row.tri { grid-template-columns: repeat(3, 1fr); }
 /* When a tri row is down to its select alone (repeat "Does not repeat",

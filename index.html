@@ -54,6 +54,7 @@
     "URL, location, categories and status",
     "RFC 5545 escaping, 75-octet line folding, UTC/TZID timestamps",
     "Time zone selector (IANA names, defaults to your device zone)",
+    "Import existing .ics files by drop, file picker, or pasted text",
     "Copies or downloads the .ics file; 100% client-side, no uploads"
   ]
 }
@@ -105,6 +106,24 @@
   <main>
     <section class="panel" aria-labelledby="form-heading">
       <h2 id="form-heading">New event</h2>
+
+      <details id="import-box">
+        <summary>Import an .ics file (drop or paste text)</summary>
+        <label id="drop-zone" class="drop-zone" for="import-file">
+          <strong>Drop an .ics file here</strong>
+          <span>or click to choose a file — nothing is uploaded</span>
+          <input id="import-file" type="file" accept=".ics,text/calendar" hidden>
+        </label>
+        <div class="field">
+          <label for="import-text">…or paste .ics text</label>
+          <textarea id="import-text" rows="4" spellcheck="false" placeholder="BEGIN:VCALENDAR&#10;…&#10;END:VCALENDAR"></textarea>
+        </div>
+        <div class="form-actions">
+          <button id="import-text-btn" class="btn" type="button">Import pasted text</button>
+          <span id="import-status" class="status-msg" role="status"></span>
+        </div>
+      </details>
+
       <form id="event-form" novalidate>
         <div class="field">
           <label for="title">Title *</label>
@@ -282,6 +301,7 @@
 </div>
 
 <script src="ics.js"></script>
+<script src="ics-parse.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
