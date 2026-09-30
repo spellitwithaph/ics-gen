@@ -1,5 +1,5 @@
 /**
- * ics-gen demo app — form wiring and event-list rendering.
+ * ICS Generator demo app — form wiring and event-list rendering.
  *
  * Kept in its own file (rather than an inline <script>) so the page can ship a
  * strict Content-Security-Policy with script-src 'self' and no 'unsafe-inline'.

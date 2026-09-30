@@ -1,4 +1,4 @@
-# ics-gen
+# ICS Generator
 
 A dependency-free **iCalendar (.ics) generator that runs entirely in the browser** — built for static-site hosting. No server-side code, no build step, no API keys. The demo page's only third-party request is Cloudflare Web Analytics (cookie-free visit counting; event data never leaves the browser).
 

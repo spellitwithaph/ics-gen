@@ -1,5 +1,5 @@
 /*!
- * ics-gen v1.0.0
+ * ICS Generator v1.0.0
  *
  * A tiny, dependency-free iCalendar (.ics) generator that runs entirely in the
  * browser (or Node), which means it can be hosted on any static site — no
@@ -25,7 +25,7 @@
 (function () {
   'use strict';
 
-  var PRODID = '-//ics-gen//JavaScript ICS Generator//EN';
+  var PRODID = '-//ICS Generator//EN';
   var CRLF = '\r\n';
 
   function pad2(n) {
@@ -61,7 +61,7 @@
    */
   function rejectControlChars(value, label) {
     if (/[\u0000-\u001F\u007F]/.test(String(value))) {
-      throw new Error('ics-gen: ' + label + ' must not contain control characters.');
+      throw new Error('ICS Generator: ' + label + ' must not contain control characters.');
     }
   }
 
@@ -73,7 +73,7 @@
   function assertEmail(email, label) {
     email = String(email == null ? '' : email);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new Error('ics-gen: invalid ' + label + ' email address.');
+      throw new Error('ICS Generator: invalid ' + label + ' email address.');
     }
     return email;
   }
@@ -88,7 +88,7 @@
     var m = /^([a-z][a-z0-9+.-]*):/i.exec(s);
     var scheme = m ? m[1].toLowerCase() : '';
     if (scheme !== 'http' && scheme !== 'https') {
-      throw new Error('ics-gen: event "url" must be an absolute http(s) URL.');
+      throw new Error('ICS Generator: event "url" must be an absolute http(s) URL.');
     }
     return s;
   }
@@ -210,14 +210,14 @@
   function makeUid() {
     try {
       if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID() + '@ics-gen';
+        return crypto.randomUUID() + '@ics-generator';
       }
     } catch (e) { /* fall through to the non-crypto fallback */ }
     return (
       'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = (Math.random() * 16) | 0;
         return (c === 'x' ? r : ((r & 0x3) | 0x8)).toString(16);
-      }) + '@ics-gen'
+      }) + '@ics-generator'
     );
   }
 
@@ -251,7 +251,7 @@
       return allDay ? end : new Date(Date.UTC(end.year, end.month - 1, end.day));
     }
     if (!(end instanceof Date) || isNaN(end.getTime())) {
-      throw new Error('ics-gen: event "end" must be a Date or { year, month, day }.');
+      throw new Error('ICS Generator: event "end" must be a Date or { year, month, day }.');
     }
     return end;
   }
@@ -333,12 +333,12 @@
   function VEvent(options) {
     options = options || {};
     if (!options.title || !String(options.title).trim()) {
-      throw new Error('ics-gen: event "title" is required.');
+      throw new Error('ICS Generator: event "title" is required.');
     }
     if (isDateParts(options.start)) {
       options.allDay = true; /* { year, month, day } implies an all-day event */
     } else if (!(options.start instanceof Date) || isNaN(options.start.getTime())) {
-      throw new Error('ics-gen: event "start" must be a Date or { year, month, day }.');
+      throw new Error('ICS Generator: event "start" must be a Date or { year, month, day }.');
     }
     validateEventOptions(options);
 
@@ -452,7 +452,7 @@
   function download(filename, text) {
     filename = filename || 'calendar.ics';
     if (typeof document === 'undefined') {
-      throw new Error('ics-gen: download() is browser-only.');
+      throw new Error('ICS Generator: download() is browser-only.');
     }
     var blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
     if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
