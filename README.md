@@ -1,4 +1,4 @@
-# ics-gen
+# ICS Generator
 
 A dependency-free **iCalendar (.ics) generator that runs entirely in the browser** — built for static-site hosting. No server-side code, no build step, no API keys. The demo page's only third-party request is Cloudflare Web Analytics (cookie-free visit counting; event data never leaves the browser).
 
@@ -10,7 +10,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-30T00:34:17Z` (ISO 8601, UTC)
+> **Last updated:** `2026-09-30T01:25:27Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,

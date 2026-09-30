@@ -3,33 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- static.cloudflareinsights.com (beacon script) and cloudflareinsights.com
-     (its reporting endpoint) are the only third-party sources allowed: they
-     power the cookie-free Cloudflare Web Analytics visit counter that Pages
-     auto-injects. It never sees form or event data. Remove both if analytics
-     are ever disabled on the host. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file: https://static.cloudflareinsights.com; style-src 'self' file:; img-src data:; connect-src https://cloudflareinsights.com; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>ics-gen — Free iCalendar (.ics) Generator, No Sign-Up</title>
+<title>ICS Generator — Free iCalendar (.ics) Generator, No Sign-Up</title>
 <meta name="description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar. 100% client-side.">
-<!-- Canonical and social URLs target the live site: Cloudflare Pages. If you
-     ever publish under a custom domain, update canonical/og:url/og:image. -->
 <link rel="canonical" href="https://ics-gen.pages.dev/">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="ics-gen">
-<meta property="og:title" content="ics-gen — Free iCalendar (.ics) Generator, No Sign-Up">
+<meta property="og:site_name" content="ICS Generator">
+<meta property="og:title" content="ICS Generator — Free iCalendar (.ics) Generator, No Sign-Up">
 <meta property="og:description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar. 100% client-side.">
 <meta property="og:url" content="https://ics-gen.pages.dev/">
 <meta property="og:image" content="https://ics-gen.pages.dev/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="ics-gen — free client-side iCalendar (.ics) generator">
+<meta property="og:image:alt" content="ICS Generator — free client-side iCalendar (.ics) generator">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ics-gen — Free iCalendar (.ics) Generator, No Sign-Up">
+<meta name="twitter:title" content="ICS Generator — Free iCalendar (.ics) Generator, No Sign-Up">
 <meta name="twitter:description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar.">
 <meta name="twitter:image" content="https://ics-gen.pages.dev/og-image.png">
-<!-- Empty data: favicon suppresses the default /favicon.ico request (no 404
-     noise on static hosts, fully offline). If you ever add a real favicon
-     file, extend img-src in the CSP above accordingly (it is data: only). -->
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="styles.css">
 
@@ -37,7 +27,7 @@
 {
   "@context": "https://schema.org",
   "@type": "WebApplication",
-  "name": "ics-gen — Free iCalendar (.ics) Generator",
+  "name": "ICS Generator — Free iCalendar (.ics) Generator",
   "url": "https://ics-gen.pages.dev/",
   "description": "Free client-side iCalendar (.ics) file generator. Build calendar events in your browser and download a ready-to-import .ics file for Google Calendar, Outlook, or Apple Calendar. Nothing is uploaded.",
   "applicationCategory": "UtilityApplication",
@@ -71,17 +61,17 @@
     },
     {
       "@type": "Question",
-      "name": "Is ics-gen free?",
+      "name": "Is ICS Generator free?",
       "acceptedAnswer": { "@type": "Answer", "text": "Yes — free and open source (MIT), no sign-up and no account required." }
     },
     {
       "@type": "Question",
-      "name": "Does ics-gen upload my event data?",
+      "name": "Does ICS Generator upload my event data?",
       "acceptedAnswer": { "@type": "Answer", "text": "No. The page runs 100% in your browser — nothing you type ever leaves your device. The hosted site uses cookie-free Cloudflare Web Analytics to count visits (aggregate page views, referrers, and countries); your events and form data are never collected or sent anywhere." }
     },
     {
       "@type": "Question",
-      "name": "Does ics-gen work offline?",
+      "name": "Does ICS Generator work offline?",
       "acceptedAnswer": { "@type": "Answer", "text": "Yes. Open index.html directly from disk — zero requests of any kind. Hosted copies need no network for the app itself; the only extra request is Cloudflare's cookie-free visit counter." }
     },
     {
@@ -96,11 +86,9 @@
 <body>
 <div class="wrap">
   <header>
-    <span class="badge">100% client-side · no server · no build step</span>
-    <h1>ics-gen</h1>
+    <h1>ICS Generator</h1>
     <p>Build calendar events in your browser and download a ready-to-import
-    <code>.ics</code> file for Google Calendar, Outlook, or Apple Calendar.
-    Nothing is uploaded — everything runs right here on this page.</p>
+    <code>.ics</code> file for Google Calendar, Outlook, or Apple Calendar.</p>
   </header>
 
   <main>
@@ -120,11 +108,11 @@
         </div>
         <div class="form-actions">
           <button id="import-text-btn" class="btn" type="button">Import pasted text</button>
-          <span id="import-status" class="status-msg" role="status"></span>
         </div>
         <p class="hint">Imported events are added to the list and preview; a
         single-event import also fills the form above.</p>
       </details>
+      <p id="import-status" class="status-msg" role="status"></p>
 
       <form id="event-form" novalidate>
         <div class="field">
@@ -287,38 +275,44 @@
   <section class="panel faq" aria-labelledby="faq-heading">
     <h2 id="faq-heading">Frequently asked questions</h2>
 
-    <h3>What is an .ics file?</h3>
-    <p>An <code>.ics</code> file is the standard calendar format (RFC 5545) used to
-    move events between calendars. Import it into Google Calendar, Outlook, Apple
-    Calendar, or Thunderbird and the event appears in your calendar.</p>
+    <details class="faq-item">
+      <summary>What is an .ics file?</summary>
+      <p>An <code>.ics</code> file is the standard calendar format (RFC 5545) used to
+      move events between calendars. Import it into Google Calendar, Outlook, Apple
+      Calendar, or Thunderbird and the event appears in your calendar.</p>
+    </details>
 
-    <h3>Is ics-gen free?</h3>
-    <p>Yes — free and open source (MIT), no sign-up and no account required.</p>
+    <details class="faq-item">
+      <summary>Is ICS Generator free?</summary>
+      <p>Yes — free and open source (MIT), no sign-up and no account required.</p>
+    </details>
 
-    <h3>Does ics-gen upload my event data?</h3>
-    <p>No. The page runs 100% in your browser — nothing you type ever leaves
-    your device. The hosted site uses cookie-free
-    <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
-    to count visits (aggregate page views, referrers, and countries); your
-    events and form data are never collected or sent anywhere.</p>
+    <details class="faq-item">
+      <summary>Does ICS Generator upload my event data?</summary>
+      <p>No. The page runs 100% in your browser — nothing you type ever leaves
+      your device. The hosted site uses cookie-free
+      <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
+      to count visits (aggregate page views, referrers, and countries); your
+      events and form data are never collected or sent anywhere.</p>
+    </details>
 
-    <h3>Does ics-gen work offline?</h3>
-    <p>Yes. Open <code>index.html</code> directly from disk — zero requests of
-    any kind. Hosted copies need no network for the app itself; the only extra
-    request is Cloudflare's cookie-free visit counter.</p>
+    <details class="faq-item">
+      <summary>Does ICS Generator work offline?</summary>
+      <p>Yes. Open <code>index.html</code> directly from disk — zero requests of
+      any kind. Hosted copies need no network for the app itself; the only extra
+      request is Cloudflare's cookie-free visit counter.</p>
+    </details>
 
-    <h3>Can I create recurring events or reminders?</h3>
-    <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
-    plus reminders set per event — minutes, hours, or days before the start — and
-    all-day, timed, and multi-day events with attendees. In one .ics file each event
-    carries its own reminder.</p>
+    <details class="faq-item">
+      <summary>Can I create recurring events or reminders?</summary>
+      <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
+      plus reminders set per event — minutes, hours, or days before the start — and
+      all-day, timed, and multi-day events with attendees. In one .ics file each event
+      carries its own reminder.</p>
+    </details>
   </section>
 
   <footer>
-    Events are generated entirely in your browser and never leave this page.
-    The site itself uses cookie-free
-    <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
-    to count visits — aggregate page views only, never your event data.
     Validate output at <a href="https://icalendar.org/validator.html" target="_blank" rel="noopener noreferrer">icalendar.org</a>.
   </footer>
 </div>

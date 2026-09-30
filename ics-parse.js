@@ -1,5 +1,5 @@
 /*!
- * ics-parse.js — a small, dependency-free iCalendar (.ics) reader for ics-gen.
+ * ics-parse.js — a small, dependency-free iCalendar (.ics) reader for ICS Generator.
  *
  * Turns RFC 5545 text into plain JavaScript objects that map onto
  * IcsGenerator's `addEvent` options, so an imported file can be re-generated,

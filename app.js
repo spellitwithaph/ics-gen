@@ -1,5 +1,5 @@
 /**
- * ics-gen demo app — form wiring and event-list rendering.
+ * ICS Generator demo app — form wiring and event-list rendering.
  *
  * Kept in its own file (rather than an inline <script>) so the page can ship a
  * strict Content-Security-Policy with script-src 'self' and no 'unsafe-inline'.
@@ -382,6 +382,9 @@
 
   /* A relative "before" trigger (-PT10M / -P1D) → the reminder controls. */
   function parseTrigger(trigger) {
+    if (typeof trigger === 'number') {
+      return trigger < 0 ? { value: Math.abs(trigger), unit: 'minutes' } : null;
+    }
     var s = String(trigger == null ? '' : trigger).trim();
     if (s.charAt(0) !== '-') return null;
     var m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(s.slice(1));
@@ -506,7 +509,8 @@
       var sp = zoneParts(ev.start, zone);
       startDateEl.value = isoFromParts(sp);
       startTimeEl.value = pad2(sp.hour) + ':' + pad2(sp.minute);
-      var end = ev.end || new Date(ev.start.getTime() + 60 * 60000);
+      var end = ev.end || new Date(ev.start.getTime() +
+        (ev.durationMinutes > 0 ? ev.durationMinutes : 60) * 60000);
       var ep = zoneParts(end, zone);
       endDateEl.value = isoFromParts(ep);
       endTimeEl.value = pad2(ep.hour) + ':' + pad2(ep.minute);
@@ -679,9 +683,25 @@
     setStatus('Download started.');
   });
 
+  var copyFlashTimer = null;
+
+  /* The toolbar button is far from the status line, so confirm the copy in the
+   * button label itself for a moment. */
+  function flashCopied() {
+    var btn = $('copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    if (copyFlashTimer) clearTimeout(copyFlashTimer);
+    copyFlashTimer = setTimeout(function () {
+      btn.textContent = 'Copy .ics';
+      btn.classList.remove('copied');
+      copyFlashTimer = null;
+    }, 1600);
+  }
+
   $('copy-btn').addEventListener('click', function () {
     var text = cal.toString();
-    function done() { setStatus('Copied to clipboard.'); }
+    function done() { setStatus('Copied to clipboard.'); flashCopied(); }
     function fallback() {
       var ta = document.createElement('textarea');
       ta.value = text;
@@ -706,7 +726,26 @@
     setStatus('Cleared.');
   });
 
+  /* True when the visitor has put something into the form. The date/time inputs
+   * are pre-filled on load, so they alone do not count. */
+  function formHasUserContent() {
+    if ($('title').value.trim() || $('description').value.trim() ||
+        $('location').value.trim() || $('categories').value.trim() ||
+        $('url').value.trim() ||
+        $('organizer-name').value.trim() || $('organizer-email').value.trim()) return true;
+    if (document.querySelector('#attendee-list .attendee-row')) return true;
+    if ($('recur-freq').value !== 'NONE') return true;
+    if ($('reminder-toggle').value === 'on') return true;
+    if ($('all-day').checked) return true;
+    return false;
+  }
+
   $('sample-btn').addEventListener('click', function () {
+    var changes = [];
+    if (cal.events.length) changes.push('replace the ' + cal.events.length + ' event(s) in the list');
+    if (formHasUserContent()) changes.push('overwrite the form fields');
+    if (changes.length && !window.confirm('Load sample events? This will ' + changes.join(' and ') + '.')) return;
+
     cal.clear();
 
     /* 1. recurring standup — remind 10 min before (number trigger) */
@@ -734,8 +773,9 @@
       alarms: [{ trigger: '-P1D' }]
     });
 
-    /* 3. one-off with attendees — remind 2 hours before */
-    cal.addEvent({
+    /* 3. one-off with attendees — remind 2 hours before; kept in a variable so
+     *    it can also be loaded into the form (it exercises the most fields). */
+    var designReview = {
       title: 'Design review',
       start: nextWeekday(3, 14, 0),
       durationMinutes: 60,
@@ -748,10 +788,13 @@
         { email: 'sam@example.com', status: 'NEEDS-ACTION' }
       ],
       alarms: [{ trigger: '-PT2H' }]
-    });
+    };
+    cal.addEvent(designReview);
 
     render();
-    setStatus('Loaded 3 sample events. Try downloading the .ics and importing it.');
+    /* Show the richest sample in the form so the .ics ↔ fields mapping is visible. */
+    populateForm(designReview);
+    setStatus('Loaded 3 sample events. The form shows "Design review" so you can see how it maps to the fields.');
   });
 
   /* ---------- importing .ics ---------- */
@@ -851,7 +894,12 @@
 
     if (added) {
       render();
-      if (result.events.length === 1) populateForm(result.events[0]);
+      /* Collapse the panel so the (now populated) form is pulled into view. */
+      $('import-box').open = false;
+      if (result.events.length === 1) {
+        populateForm(result.events[0]);
+        $('title').focus();
+      }
     }
 
     var msg = 'Imported ' + added + ' of ' + result.events.length +
