@@ -63,8 +63,8 @@ and click **Import pasted text** (Ctrl/⌘+Enter also works). Reading happens
 entirely in the browser — the file is never uploaded. Every `VEVENT` is added
 to the list and preview; when the input holds exactly one event its fields are
 also loaded into the form for editing. Anything the form cannot represent
-(`EXDATE`, `COUNT`, unknown zones, …) is kept where possible and reported as a
-warning.
+(`EXDATE`, `COUNT`, unknown zones, …) is kept where possible; unknown properties
+are ignored silently.
 
 The **Organizer** and **Attendees** fields write `ORGANIZER` and `ATTENDEE`
 lines. Add as many attendees as you need and set each one's role, reply status,
