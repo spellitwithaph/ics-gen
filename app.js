@@ -858,7 +858,7 @@
       ' event' + (result.events.length === 1 ? '' : 's');
     if (sourceLabel) msg += ' from ' + sourceLabel;
     msg += '.';
-    if (added && result.events.length === 1) msg += ' Fields loaded into the form above.';
+    if (added && result.events.length === 1) msg += ' Fields loaded into the form above (the event is already in the list).';
     if (warnings.length) {
       msg += ' ' + warnings.length + ' warning' + (warnings.length === 1 ? '' : 's') +
         ': ' + warnings.slice(0, 3).join(' ') + (warnings.length > 3 ? ' …' : '');
