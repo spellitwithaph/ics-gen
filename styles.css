@@ -1,17 +1,26 @@
+/*
+ * A soft, slightly-dark light theme. Three surface levels keep depth without
+ * going full dark: --bg (page) → --panel (cards) → --surface (inset rows,
+ * import box) → --field (inputs/buttons). Text pairs were chosen to clear
+ * WCAG AA (≥4.5:1) for body/small text and muted text on every surface.
+ */
 :root {
-  --bg: #f4f6fa;
-  --panel: #ffffff;
+  --bg: #e6eaf1;
+  --panel: #f7f9fc;
+  --surface: #edf1f6;
+  --field: #fbfcfe;
   --text: #1b2430;
-  --muted: #5d6b7e;
+  --muted: #55627a;
   --accent: #2563eb;
   --accent-strong: #1d4ed8;
-  --accent-soft: #e8effc;
-  --border: #dfe5ee;
-  --danger: #dc2626;
+  --accent-soft: #d9e5fb;
+  --border: #d3dae4;
+  --border-strong: #bcc6d5;
+  --danger: #b42318;
   --code-bg: #0f172a;
   --code-text: #dbe4f1;
   --radius: 12px;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.07), 0 10px 28px -14px rgba(16, 24, 40, 0.18);
 }
 
 * { box-sizing: border-box; }
@@ -60,8 +69,10 @@ main {
   border-radius: 8px;
   font: inherit;
   color: inherit;
-  background: #fff;
+  background: var(--field);
 }
+.field input::placeholder,
+.field textarea::placeholder { color: var(--muted); opacity: 1; }
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
@@ -76,7 +87,7 @@ main {
   appearance: none;
   -webkit-appearance: none;
   padding-right: 30px;
-  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%235d6b7e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 3px center;
+  background: var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%2355627a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 3px center;
 }
 textarea { resize: vertical; }
 .field .hint { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
@@ -87,7 +98,7 @@ textarea { resize: vertical; }
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0 12px;
-  background: #fbfcfe;
+  background: var(--surface);
 }
 #import-box > summary { padding: 10px 0; }
 #import-box[open] > summary { margin-bottom: 12px; }
@@ -100,7 +111,7 @@ textarea { resize: vertical; }
   padding: 18px 12px;
   border: 1.5px dashed var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--field);
   color: var(--muted);
   cursor: pointer;
   font-size: 13px;
@@ -147,7 +158,7 @@ textarea { resize: vertical; }
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fbfcfe;
+  background: var(--surface);
 }
 .attendee-row .field { margin-bottom: 0; }
 .att-rsvp {
@@ -170,12 +181,12 @@ textarea { resize: vertical; }
   padding: 9px 14px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--field);
   color: var(--text);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
-.btn:hover { border-color: #c9d3e2; }
+.btn:hover { border-color: var(--border-strong); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { background: var(--accent-strong); }
 .btn.ghost { background: transparent; }
@@ -203,7 +214,7 @@ textarea { resize: vertical; }
   border-radius: 10px;
   padding: 10px 12px;
   margin-bottom: 8px;
-  background: #fbfcfe;
+  background: var(--surface);
 }
 #event-list .event-info { min-width: 0; }
 #event-list strong { display: block; font-size: 14px; }
