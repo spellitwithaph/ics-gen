@@ -1265,7 +1265,9 @@
    * because localStorage throws on some schemes (file:// in some browsers,
    * private mode, disabled storage) and a failure must never break the page. */
   var STORAGE_KEY = 'ics-gen-v2';
-  var STORAGE_VERSION = 1;
+  /* 2 wraps each record as { options, uid }; 1 was the flat options array that
+   * never shipped past this branch and is still accepted on restore. */
+  var STORAGE_VERSION = 2;
   var MAX_RESTORED_EVENTS = MAX_EVENTS;
   /* skipNextSave is set when a restore is refused (foreign/newer payload) so
    * the very next automatic save does not overwrite data this version does not
@@ -1338,10 +1340,15 @@
     try {
       data = JSON.parse(raw);
     } catch (e) { return { restored: 0, saved: 0 }; }
-    if (!data || typeof data !== 'object' || data.version !== STORAGE_VERSION) {
-      /* A foreign or newer payload must not be silently replaced by this
-       * version's empty calendar: skip the next automatic save so it survives
-       * until the visitor actually changes the list. */
+    if (!data || typeof data !== 'object') {
+      skipNextSave = true;
+      return { restored: 0, saved: 0 };
+    }
+    /* v2 wraps each record as { options, uid }; v1 stored bare options. A
+     * newer/foreign version must not be silently replaced by an empty calendar,
+     * so skip the next automatic save until the visitor changes the list. */
+    var legacy = data.version === 1;
+    if (!legacy && data.version !== STORAGE_VERSION) {
       skipNextSave = true;
       return { restored: 0, saved: 0 };
     }
@@ -1351,11 +1358,12 @@
     var count = 0;
     data.events.slice(0, MAX_RESTORED_EVENTS).forEach(function (record) {
       if (!record || typeof record !== 'object') return;
-      var options = record.options;
+      var options = legacy ? record : record.options;
       if (!options || typeof options !== 'object') return;
       try {
         var ev = cal.addEvent(deserializeOptions(options));
-        var uid = record.uid;
+        /* v1 records carry no uid, so the fresh one addEvent generated stands. */
+        var uid = legacy ? null : record.uid;
         /* ev.uid is stored already escaped, so assigning the stored string
          * directly reproduces the identical UID line. A missing or invalid uid
          * keeps the freshly generated one instead of dropping the event. */
