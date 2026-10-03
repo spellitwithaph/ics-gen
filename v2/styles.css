@@ -75,6 +75,13 @@ main {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
+/* Keyboard focus for controls that have no visible focus style of their own. */
+.btn:focus-visible,
+summary:focus-visible,
+.check input:focus-visible,
+.att-rsvp input:focus-visible,
+.drop-zone:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .field select {
   appearance: none;
   -webkit-appearance: none;
