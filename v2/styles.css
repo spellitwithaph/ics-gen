@@ -142,9 +142,12 @@ textarea { resize: vertical; }
   font-size: 14px;
   font-weight: 600;
   margin: 2px 0 14px;
+  /* WCAG 2.5.8: a 24px-minimum tappable area around the 18px checkbox. */
+  min-height: 24px;
+  padding: 3px 0;
   cursor: pointer;
 }
-.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* Organizer + attendees */
 .contact-group { border: 0; margin: 0 0 14px; padding: 0; min-width: 0; }
@@ -168,9 +171,11 @@ textarea { resize: vertical; }
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
+  min-height: 24px;
+  padding: 3px 0;
   cursor: pointer;
 }
-.att-rsvp input { width: 16px; height: 16px; accent-color: var(--accent); }
+.att-rsvp input { width: 18px; height: 18px; accent-color: var(--accent); }
 .att-remove { justify-self: end; align-self: center; padding: 7px 10px; font-size: 13px; }
 
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
