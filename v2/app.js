@@ -616,7 +616,7 @@
     if (!cal.events.length) {
       var li = document.createElement('li');
       li.className = 'empty';
-      li.textContent = 'No events yet. Add one on the left, or load the samples.';
+      li.textContent = 'No events yet — add your first event with the form, or load the samples.';
       list.appendChild(li);
     } else {
       cal.events.forEach(function (ev, i) {
