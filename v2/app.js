@@ -188,7 +188,10 @@
     rememberStartInstant();
   }
 
-  function syncAllDayUI() {
+  /* Visibility only: which controls an all-day event hides. Kept separate from
+   * the date correction below so restoring a snapshot can reproduce its values
+   * exactly without the auto-bump rewriting the visitor's draft. */
+  function syncAllDayVisibility() {
     var allDay = $('all-day').checked;
     $('field-start-time').hidden = allDay;
     $('field-end-time').hidden = allDay;
@@ -197,8 +200,15 @@
     /* DTEND on an all-day event is exclusive — only worth explaining when the
      * end date itself is visible. */
     $('all-day-end-hint').hidden = !allDay;
+  }
+
+  function syncAllDayUI() {
+    syncAllDayVisibility();
+    var allDay = $('all-day').checked;
     if (allDay && endDateEl.value && startDateEl.value && endDateEl.value <= startDateEl.value) {
       endDateEl.value = addDays(startDateEl.value, 1);
+      /* The rewritten end date is valid again, so drop any stale inline error. */
+      clearFieldError('end-date');
     }
   }
 
@@ -391,7 +401,15 @@
       focusFirstInvalidField();
       return true;
     }
-    if (/organizer/.test(msg)) {
+    /* A control-character name is not an email problem: match it first so the
+     * message lands on #organizer-name instead of the email field. */
+    if (/organizer name/.test(msg)) {
+      setFieldError('organizer-name', 'Remove special characters from the organizer name.');
+      setStatus(generic, true);
+      focusFirstInvalidField();
+      return true;
+    }
+    if (/organizer email/.test(msg)) {
       setFieldError('organizer-email', 'Enter a valid email address for the organizer.');
       setStatus(generic, true);
       focusFirstInvalidField();
@@ -433,6 +451,11 @@
         opts.start = parseDateInput(startDateEl.value); /* { year, month, day } — timezone-safe */
       }
       if (endDateEl.value) opts.end = parseDateInput(endDateEl.value);
+      /* DTEND is exclusive, so end == start would emit a zero-length (or
+       * immediate) all-day event — reject it rather than write DTEND == DTSTART. */
+      if (opts.start && opts.end && isoFromParts(opts.end) <= isoFromParts(opts.start)) {
+        errors['end-date'] = 'The end date must be after the start date.';
+      }
     } else {
       if (!startDateEl.value) errors['start-date'] = 'Pick a start date.';
       if (!startTimeEl.value) errors['start-time'] = 'Pick a start time.';
@@ -760,6 +783,7 @@
   });
 
   function populateForm(ev) {
+    clearAllFieldErrors();
     $('title').value = ev.title || '';
     $('description').value = ev.description || '';
     $('location').value = ev.location || '';
@@ -955,7 +979,10 @@
             setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
             return;
           }
+          /* This mutation supersedes any pending undo: drop it without
+           * restoring so a later Undo cannot wipe the duplicate. */
           cal.addEvent(cloneEventOptions(ev.options));
+          dismissUndoToast();
           render();
           setStatus('Duplicated "' + ev.options.title + '".');
         });
@@ -970,8 +997,14 @@
           cal.removeEvent(removedIndex);
           render();
           showUndoToast('Removed "' + removed.options.title + '".', function () {
+            /* Reinsertion grows the list, so respect the same cap every other
+             * growth point uses; refuse rather than lose an event on reload. */
+            if (cal.events.length >= MAX_EVENTS) {
+              setStatus('The list is full — the removal could not be undone.', true);
+              return false;
+            }
             cal.events.splice(removedIndex, 0, removed);
-          });
+          }, del);
         });
 
         li.appendChild(info);
@@ -1117,41 +1150,97 @@
   var UNDO_TIMEOUT_MS = 8000;
   var undoTimer = null;
   var undoAction = null;
+  var undoTrigger = null;
+  var undoHover = false;
 
-  function hideUndoToast(refocus) {
-    var toast = $('undo-toast');
-    var hadFocus = toast.contains(document.activeElement);
-    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+  /* Drop the pending undo without restoring and without any focus side-effect.
+   * Used when a later list mutation takes ownership of the list: the undo
+   * belongs to the last action only, so it must not be able to fire against a
+   * list that has changed since. */
+  function dismissUndoToast() {
+    pauseUndoTimer();
     undoAction = null;
-    toast.hidden = true;
-    if (refocus || hadFocus) $('title').focus();
+    undoTrigger = null;
+    undoHover = false;
+    $('undo-toast').hidden = true;
   }
 
-  function showUndoToast(message, undoFn) {
-    undoAction = { message: message, undo: undoFn };
-    var toast = $('undo-toast');
-    toast.hidden = false;
-    $('undo-msg').textContent = message;
-    if (undoTimer) clearTimeout(undoTimer);
-    undoTimer = setTimeout(function () { hideUndoToast(false); }, UNDO_TIMEOUT_MS);
-    $('undo-btn').focus();
+  function pauseUndoTimer() {
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
   }
+
+  /* The timer must not run down while the visitor is reading or tabbing through
+   * the toast (WCAG 2.2.1): pause on pointer hover and keyboard focus. */
+  function undoTimerPaused() {
+    var toast = $('undo-toast');
+    if (toast.hidden) return true;
+    return undoHover || toast.contains(document.activeElement);
+  }
+
+  function resumeUndoTimer() {
+    if (undoTimer || undoTimerPaused()) return;
+    undoTimer = setTimeout(function () { hideUndoToast(); }, UNDO_TIMEOUT_MS);
+  }
+
+  /* Refocus after the toast goes away only when focus was inside it, and prefer
+   * the button that triggered the action (if it still exists). */
+  function refocusAfterUndo(trigger) {
+    if (trigger && trigger.isConnected) { trigger.focus(); return; }
+    var title = $('title');
+    if (title) title.focus();
+  }
+
+  function hideUndoToast() {
+    var toast = $('undo-toast');
+    var focusInside = toast.contains(document.activeElement);
+    var trigger = undoTrigger;
+    dismissUndoToast();
+    if (focusInside) refocusAfterUndo(trigger);
+  }
+
+  function showUndoToast(message, undoFn, trigger) {
+    undoAction = { message: message, undo: undoFn };
+    undoTrigger = trigger || null;
+    var toast = $('undo-toast');
+    /* Paint the live region before revealing it so the announcement is reliable. */
+    $('undo-msg').textContent = message;
+    toast.hidden = false;
+    /* Deliberately no focus() on #undo-btn: the role="status" region announces
+     * the change, and stealing focus would trap keyboard users on repeated
+     * actions. The button stays reachable in normal tab order. */
+    pauseUndoTimer();
+    resumeUndoTimer();
+  }
+
+  (function wireUndoTimerPause() {
+    var toast = $('undo-toast');
+    toast.addEventListener('pointerenter', function () { undoHover = true; pauseUndoTimer(); });
+    toast.addEventListener('pointerleave', function () { undoHover = false; resumeUndoTimer(); });
+    toast.addEventListener('focusin', pauseUndoTimer);
+    toast.addEventListener('focusout', function (e) {
+      if (e.relatedTarget && toast.contains(e.relatedTarget)) return;
+      resumeUndoTimer();
+    });
+  })();
 
   function runUndo() {
     var action = undoAction;
     if (!action) return;
-    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
-    undoAction = null;
-    $('undo-toast').hidden = true;
+    var trigger = undoTrigger;
+    var focusInside = $('undo-toast').contains(document.activeElement);
+    dismissUndoToast();
+    var result;
     try {
-      action.undo();
+      result = action.undo();
     } catch (e) {
       setStatus('Could not undo that action.', true);
       return;
     }
+    /* A refused undo (e.g. the cap would be exceeded) reports its own status. */
+    if (result === false) return;
     render(); /* also persists the restored list */
     setStatus('Undone.');
-    $('title').focus();
+    if (focusInside) refocusAfterUndo(trigger);
   }
 
   $('undo-btn').addEventListener('click', runUndo);
@@ -1160,14 +1249,15 @@
     if ($('undo-toast').hidden) return;
     if (e.key === 'Escape') {
       e.preventDefault();
-      hideUndoToast(true);
+      hideUndoToast();
       return;
     }
-    /* Ctrl/Cmd+Z is a shortcut only outside text fields, where the browser's
-     * own undo must keep working. */
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+    /* Ctrl/Cmd+Z is a shortcut only outside form controls (and not the
+     * shifted redo), where the browser's own undo must keep working. */
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
       var t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' || t.isContentEditable)) return;
       e.preventDefault();
       runUndo();
     }
@@ -1199,11 +1289,22 @@
         rsvp: row.querySelector('.att-rsvp-input').checked
       });
     }
-    return { values: values, attendees: attendees };
+    return {
+      values: values,
+      attendees: attendees,
+      /* Edit context travels with the draft so a samples undo can put the
+       * visitor back into the same Update session, not a silent Add. */
+      editingEvent: editingEvent,
+      editingKept: {
+        rrule: editingKept.rrule,
+        alarms: editingKept.alarms ? editingKept.alarms.map(copyPlain) : null
+      }
+    };
   }
 
   function restoreForm(snap) {
     if (!snap) return;
+    clearAllFieldErrors();
     var box = $('attendee-list');
     box.textContent = '';
     snap.attendees.forEach(addAttendeeRow);
@@ -1213,11 +1314,26 @@
       if (rec.checked !== null) el.checked = rec.checked;
       else el.value = rec.value;
     });
-    syncAllDayUI();
+    /* Visibility only: the snapshot's date values must survive byte-for-byte. */
+    syncAllDayVisibility();
     syncRecurUI();
     syncReminderUI();
     updateKeptHint();
     rememberStartInstant();
+  }
+
+  /* Re-enter the edit session a snapshot captured. Targets the same event by
+   * reference; if it is gone (removed while the toast was pending) the form is
+   * left cleanly in Add mode instead of updating the wrong event. */
+  function restoreEditState(snap) {
+    var ev = snap && snap.editingEvent;
+    if (!ev || cal.events.indexOf(ev) === -1) { exitEditMode(); return; }
+    editingEvent = ev;
+    editingKept = snap.editingKept || { rrule: null, alarms: null };
+    $('form-heading').textContent = 'Edit event';
+    $('add-btn').textContent = 'Update event';
+    $('cancel-edit-btn').hidden = false;
+    updateKeptHint();
   }
 
   /* ---------- actions ---------- */
@@ -1241,6 +1357,7 @@
             return;
           }
           updated = cal.addEvent(opts);
+          dismissUndoToast();
           exitEditMode();
           render();
           setStatus('The event being edited was removed — added as a new event instead.');
@@ -1254,6 +1371,7 @@
             opts.alarms = editingKept.alarms.map(copyPlain);
           }
           updated = cal.updateEvent(index, opts);
+          dismissUndoToast();
           exitEditMode();
           render();
           setStatus('Updated "' + updated.options.title + '".');
@@ -1268,6 +1386,7 @@
       }
 
       var ev = cal.addEvent(opts);
+      dismissUndoToast();
       /* quick-entry flow: roll the form forward to the next slot */
       if (!$('all-day').checked && endDateEl.value && endTimeEl.value) {
         startDateEl.value = endDateEl.value;
@@ -1339,14 +1458,20 @@
     cal.clear();
     render();
     setStatus('Cleared.');
-    showUndoToast('Cleared ' + snapshot.length + ' event(s).', function () {
-      cal.events = snapshot;
-    });
+    showUndoToast(
+      snapshot.length === 1 ? 'Cleared 1 event.' : 'Cleared ' + snapshot.length + ' events.',
+      function () { cal.events = snapshot; },
+      $('clear-btn')
+    );
   });
 
   $('sample-btn').addEventListener('click', function () {
     var previousEvents = cal.events.slice();
     var previousForm = snapshotForm();
+    /* Loading samples replaces the form, so leave edit mode now: keeping a
+     * stale Update target would silently turn a later Update into an Add.
+     * The snapshot above already carries the edit context for Undo. */
+    exitEditMode();
 
     cal.clear();
 
@@ -1398,10 +1523,10 @@
     populateForm(designReview);
     setStatus('Loaded 3 sample events. The form shows "Design review" so you can see how it maps to the fields.');
     showUndoToast('Loaded 3 sample events.', function () {
-      exitEditMode();
       cal.events = previousEvents;
       restoreForm(previousForm);
-    });
+      restoreEditState(previousForm);
+    }, $('sample-btn'));
   });
 
   /* ---------- importing .ics ---------- */
@@ -1489,6 +1614,10 @@
     });
 
     if (added) {
+      /* Importing mutated the list, so it supersedes any pending undo. Dismiss
+       * here (not before the loop) so an import that adds nothing leaves a
+       * still-valid undo intact. */
+      dismissUndoToast();
       render();
       /* Collapse the panel so the (now populated) form is pulled into view. */
       $('import-box').open = false;
