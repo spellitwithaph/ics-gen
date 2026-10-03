@@ -15,6 +15,11 @@
 
   var cal = new IcsGenerator.Calendar({ name: 'My Events' });
 
+  /* Hard ceiling on the list. Every growth point (form submit, duplicate,
+   * import) checks it and restore applies it, so the cap can never be evaded
+   * silently. */
+  var MAX_EVENTS = 200;
+
   /* Time-zone math lives in ics.js so the importer can share it. */
   var zoneParts = IcsGenerator.zoneParts;
   var zonedTimeToDate = IcsGenerator.zonedTimeToDate;
@@ -757,6 +762,10 @@
         dup.textContent = 'Duplicate';
         dup.setAttribute('aria-label', 'Duplicate ' + ev.options.title);
         dup.addEventListener('click', function () {
+          if (cal.events.length >= MAX_EVENTS) {
+            setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
+            return;
+          }
           var copy = cal.addEvent(cloneEventOptions(ev.options));
           render();
           setStatus('Duplicated "' + ev.options.title + '".');
@@ -898,6 +907,10 @@
         if (index === -1) {
           /* The edited event was removed while the form was open — keep the
            * visitor's work by adding it as a new event instead. */
+          if (cal.events.length >= MAX_EVENTS) {
+            setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
+            return;
+          }
           updated = cal.addEvent(opts);
           exitEditMode();
           render();
@@ -917,6 +930,11 @@
           setStatus('Updated "' + updated.options.title + '".');
         }
         focusEventTitle(cal.events.indexOf(updated));
+        return;
+      }
+
+      if (cal.events.length >= MAX_EVENTS) {
+        setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
         return;
       }
 
@@ -1130,7 +1148,9 @@
     }
 
     var added = 0;
+    var hitCap = false;
     result.events.forEach(function (ev) {
+      if (cal.events.length >= MAX_EVENTS) { hitCap = true; return; }
       /* Skip an event only if ics.js rejects it outright; the count below
        * already tells the visitor when fewer events landed than were found. */
       try {
@@ -1158,7 +1178,8 @@
       ' event' + (result.events.length === 1 ? '' : 's');
     if (sourceLabel) msg += ' from ' + sourceLabel;
     setImportStatus(msg + '.', added === 0);
-    if (added) setStatus('Imported ' + added + ' event' + (added === 1 ? '' : 's') + '.');
+    if (hitCap) setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
+    else if (added) setStatus('Imported ' + added + ' event' + (added === 1 ? '' : 's') + '.');
   }
 
   function readImportFile(file) {
@@ -1241,11 +1262,13 @@
    * private mode, disabled storage) and a failure must never break the page. */
   var STORAGE_KEY = 'ics-gen-v2';
   var STORAGE_VERSION = 1;
-  var MAX_RESTORED_EVENTS = 200;
+  var MAX_RESTORED_EVENTS = MAX_EVENTS;
   /* skipNextSave is set when a restore is refused (foreign/newer payload) so
    * the very next automatic save does not overwrite data this version does not
-   * understand. */
+   * understand. saveFailed reports a broken localStorage exactly once. */
   var skipNextSave = false;
+  var saveFailed = false;
+  var SAVE_BLOCKED_MSG = "This browser blocks saving — events won't survive a reload.";
 
   function serializeDateValue(v) {
     if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
@@ -1289,30 +1312,38 @@
           return { options: options, uid: ev.uid };
         })
       }));
-    } catch (e) { /* quota/security error — ignore */ }
+    } catch (e) {
+      /* quota/security error — surface it once instead of failing silently */
+      if (!saveFailed) {
+        saveFailed = true;
+        setStatus(SAVE_BLOCKED_MSG);
+      }
+    }
   }
 
-  /* Returns the number of events restored (0 when there is nothing valid). */
+  /* Returns { restored, saved } counts. `saved` is how many records the payload
+   * held before the 200 cap so the caller can say when data was dropped. */
   function restoreEvents() {
     var raw;
     try {
       raw = localStorage.getItem(STORAGE_KEY);
-    } catch (e) { return 0; }
-    if (!raw) return 0;
+    } catch (e) { return { restored: 0, saved: 0 }; }
+    if (!raw) return { restored: 0, saved: 0 };
 
     var data;
     try {
       data = JSON.parse(raw);
-    } catch (e) { return 0; }
+    } catch (e) { return { restored: 0, saved: 0 }; }
     if (!data || typeof data !== 'object' || data.version !== STORAGE_VERSION) {
       /* A foreign or newer payload must not be silently replaced by this
        * version's empty calendar: skip the next automatic save so it survives
        * until the visitor actually changes the list. */
       skipNextSave = true;
-      return 0;
+      return { restored: 0, saved: 0 };
     }
-    if (!Array.isArray(data.events)) return 0;
+    if (!Array.isArray(data.events)) return { restored: 0, saved: 0 };
 
+    var saved = data.events.length;
     var count = 0;
     data.events.slice(0, MAX_RESTORED_EVENTS).forEach(function (record) {
       if (!record || typeof record !== 'object') return;
@@ -1331,7 +1362,7 @@
         count++;
       } catch (e) { /* an event that no longer validates is skipped */ }
     });
-    return count;
+    return { restored: count, saved: saved };
   }
 
   /* ---------- init ---------- */
@@ -1342,8 +1373,11 @@
   syncRecurUI();
   syncReminderUI();
   var restored = 0;
+  var savedTotal = 0;
   try {
-    restored = restoreEvents();
+    var restoreResult = restoreEvents();
+    restored = restoreResult.restored;
+    savedTotal = restoreResult.saved;
   } catch (e) {
     /* No restore path may leave the page half-initialized: drop whatever was
      * loaded and continue with an empty list. */
@@ -1351,7 +1385,13 @@
     setStatus('Saved events could not be restored.', true);
   }
   render();
-  if (restored) setStatus('Restored ' + restored + ' saved event(s).');
+  if (restored && savedTotal > restored) {
+    setStatus('Restored ' + restored + ' of ' + savedTotal + ' saved events — the rest could not be restored.');
+  } else if (restored) {
+    setStatus('Restored ' + restored + ' saved event(s).');
+  }
+  /* A failed save is more urgent than the restore notice, so it wins here. */
+  if (saveFailed) setStatus(SAVE_BLOCKED_MSG);
   /* Start keyboard visitors in the first field (no scroll-jumping). */
   $('title').focus();
 })();
