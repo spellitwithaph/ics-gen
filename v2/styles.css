@@ -92,6 +92,24 @@ summary:focus-visible,
 textarea { resize: vertical; }
 .field .hint { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
 
+/* Inline validation */
+.field.invalid input,
+.field.invalid select,
+.field.invalid textarea { border-color: var(--danger); }
+.field.invalid input:focus,
+.field.invalid select:focus,
+.field.invalid textarea:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.15);
+}
+.field-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--danger);
+}
+
 /* Import panel */
 #import-box {
   margin: 0 0 16px;

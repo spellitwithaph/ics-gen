@@ -276,35 +276,184 @@
    * so a later start change measures duration from the correct instant. */
   timezoneEl.addEventListener('change', rememberStartInstant);
 
+  /* ---------- validation ---------- */
+
+  /* Inline field errors live next to the control they describe: the `.field`
+   * wrapper gets `.invalid`, the control gets aria-invalid/aria-describedby,
+   * and a <p class="field-error"> is inserted right after the control. */
+
+  function fieldErrorId(fieldId) { return fieldId + '-error'; }
+
+  function setFieldError(fieldId, message) {
+    var input = $(fieldId);
+    if (!input) return;
+    var wrap = input.closest ? input.closest('.field') : null;
+    if (!wrap) return;
+    var errId = fieldErrorId(fieldId);
+    wrap.classList.add('invalid');
+    input.setAttribute('aria-invalid', 'true');
+    var ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    if (ids.indexOf(errId) === -1) ids.push(errId);
+    input.setAttribute('aria-describedby', ids.join(' '));
+
+    var err = document.getElementById(errId);
+    if (!err) {
+      err = document.createElement('p');
+      err.className = 'field-error';
+      err.id = errId;
+      if (input.nextSibling) wrap.insertBefore(err, input.nextSibling);
+      else wrap.appendChild(err);
+    }
+    err.textContent = message;
+  }
+
+  function clearFieldError(fieldId) {
+    var input = $(fieldId);
+    if (!input) return;
+    var wrap = input.closest ? input.closest('.field') : null;
+    if (wrap) wrap.classList.remove('invalid');
+
+    var errId = fieldErrorId(fieldId);
+    input.removeAttribute('aria-invalid');
+    var ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)
+      .filter(function (id) { return id !== errId; });
+    if (ids.length) input.setAttribute('aria-describedby', ids.join(' '));
+    else input.removeAttribute('aria-describedby');
+
+    var err = document.getElementById(errId);
+    if (err && err.parentNode) err.parentNode.removeChild(err);
+  }
+
+  function clearAllFieldErrors() {
+    var wraps = document.querySelectorAll('#event-form .field.invalid');
+    for (var i = 0; i < wraps.length; i++) {
+      wraps[i].classList.remove('invalid');
+      var input = wraps[i].querySelector('input, select, textarea');
+      if (!input) continue;
+      input.removeAttribute('aria-invalid');
+      if (!input.id) continue;
+      var errId = fieldErrorId(input.id);
+      var ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)
+        .filter(function (id) { return id !== errId; });
+      if (ids.length) input.setAttribute('aria-describedby', ids.join(' '));
+      else input.removeAttribute('aria-describedby');
+    }
+    var errs = document.querySelectorAll('#event-form .field-error');
+    for (var j = 0; j < errs.length; j++) {
+      if (errs[j].parentNode) errs[j].parentNode.removeChild(errs[j]);
+    }
+  }
+
+  /* Errors clear as soon as the visitor edits the offending control. Delegated
+   * so dynamically added attendee rows are covered too. */
+  $('event-form').addEventListener('input', function (e) {
+    if (e.target && e.target.id) clearFieldError(e.target.id);
+  });
+  $('event-form').addEventListener('change', function (e) {
+    if (e.target && e.target.id) clearFieldError(e.target.id);
+  });
+
+  function focusFirstInvalidField() {
+    var controls = $('event-form').querySelectorAll('input, select, textarea');
+    for (var i = 0; i < controls.length; i++) {
+      if (controls[i].getAttribute('aria-invalid') === 'true') { controls[i].focus(); return; }
+    }
+  }
+
+  /* Paint a map of field id → message and move focus to the first bad field in
+   * DOM order; #status-msg carries a short generic explanation. */
+  function showFormErrors(errors) {
+    clearAllFieldErrors();
+    Object.keys(errors).forEach(function (id) { setFieldError(id, errors[id]); });
+    setStatus('Fix the highlighted fields and try again.', true);
+    focusFirstInvalidField();
+  }
+
+  function firstInvalidAttendeeEmail() {
+    var inputs = document.querySelectorAll('#attendee-list .att-email');
+    for (var i = 0; i < inputs.length; i++) {
+      var v = inputs[i].value.trim();
+      if (v && !looksLikeEmail(v)) return inputs[i];
+    }
+    return null;
+  }
+
+  /* Map a genuine library rejection (ics.js validateEventOptions/VEvent) onto
+   * the control that caused it. Returns false when it is not identifiable, so
+   * the caller can fall back to the status line. */
+  function showFieldErrorFromLib(err) {
+    var msg = String((err && err.message) || '');
+    var generic = 'Fix the highlighted fields and try again.';
+
+    if (/event "url"/.test(msg)) {
+      setFieldError('url', 'Enter a valid http(s) link, for example https://example.com/agenda.');
+      setStatus(generic, true);
+      focusFirstInvalidField();
+      return true;
+    }
+    if (/organizer/.test(msg)) {
+      setFieldError('organizer-email', 'Enter a valid email address for the organizer.');
+      setStatus(generic, true);
+      focusFirstInvalidField();
+      return true;
+    }
+    if (/attendee/.test(msg)) {
+      var input = firstInvalidAttendeeEmail();
+      if (input && input.id) {
+        setFieldError(input.id, 'Enter a valid email address for this attendee.');
+        setStatus(generic, true);
+        input.focus();
+        return true;
+      }
+    }
+    return false;
+  }
+
   /* ---------- reading the form ---------- */
 
+  /* Build the addEvent options. User-input problems are collected as a map of
+   * field id → message (no throw) so the caller can render inline errors;
+   * library-level checks still live in ics.js and are caught at the submit
+   * boundary (showFieldErrorFromLib). */
   function readForm() {
+    var errors = {};
+    var opts = {};
+
     var title = $('title').value.trim();
-    if (!title) throw new Error('Please give the event a title.');
+    if (!title) errors['title'] = 'Please give the event a title.';
+    opts.title = title;
 
     var allDay = $('all-day').checked;
-    var opts = { title: title, allDay: allDay };
+    opts.allDay = allDay;
 
     if (allDay) {
-      if (!startDateEl.value) throw new Error('Pick a start date.');
-      opts.start = parseDateInput(startDateEl.value); /* { year, month, day } — timezone-safe */
+      if (!startDateEl.value) {
+        errors['start-date'] = 'Pick a start date.';
+      } else {
+        opts.start = parseDateInput(startDateEl.value); /* { year, month, day } — timezone-safe */
+      }
       if (endDateEl.value) opts.end = parseDateInput(endDateEl.value);
     } else {
-      if (!startDateEl.value) throw new Error('Pick a start date.');
-      if (!startTimeEl.value) throw new Error('Pick a start time.');
+      if (!startDateEl.value) errors['start-date'] = 'Pick a start date.';
+      if (!startTimeEl.value) errors['start-time'] = 'Pick a start time.';
       /* Read the typed wall-clock time in the chosen zone. 'UTC' is emitted as
        * a plain ...Z timestamp (no TZID); every other zone gets a TZID. */
       var tz = timezoneEl.value || localTimeZone();
       if (tz !== 'UTC') opts.timezone = tz;
-      var sd = parseDateInput(startDateEl.value);
-      var st = parseTimeInput(startTimeEl.value);
-      opts.start = zonedTimeToDate(sd.year, sd.month, sd.day, st.hour, st.minute, tz);
+      if (startDateEl.value && startTimeEl.value) {
+        var sd = parseDateInput(startDateEl.value);
+        var st = parseTimeInput(startTimeEl.value);
+        opts.start = zonedTimeToDate(sd.year, sd.month, sd.day, st.hour, st.minute, tz);
+      }
       if (endDateEl.value && endTimeEl.value) {
         var ed = parseDateInput(endDateEl.value);
         var et = parseTimeInput(endTimeEl.value);
         opts.end = zonedTimeToDate(ed.year, ed.month, ed.day, et.hour, et.minute, tz);
-        if (opts.end <= opts.start) throw new Error('The end date/time must be after the start.');
-      } else {
+        if (opts.start && opts.end <= opts.start) {
+          errors['end-date'] = 'The end date/time must be after the start.';
+          errors['end-time'] = 'The end date/time must be after the start.';
+        }
+      } else if (opts.start) {
         opts.end = new Date(opts.start.getTime() + 60 * 60000); /* default: 1 hour */
       }
     }
@@ -345,39 +494,50 @@
     var on = $('reminder-toggle').value === 'on';
     if (on) {
       var n = parseInt($('reminder-value').value, 10);
-      if (!n || n < 1) throw new Error('Pick how long before the event to remind you (1 or more).');
-      var unit = $('reminder-unit').value; /* minutes | hours | days */
-      var dur = unit === 'days' ? 'P' + n + 'D'
-        : unit === 'hours' ? 'PT' + n + 'H'
-        : 'PT' + n + 'M';
-      opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
+      if (!n || n < 1) {
+        errors['reminder-value'] = 'Pick how long before the event to remind you (1 or more).';
+      } else {
+        var unit = $('reminder-unit').value; /* minutes | hours | days */
+        var dur = unit === 'days' ? 'P' + n + 'D'
+          : unit === 'hours' ? 'PT' + n + 'H'
+          : 'PT' + n + 'M';
+        opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
+      }
     }
 
     var orgName = $('organizer-name').value.trim();
     var orgEmail = $('organizer-email').value.trim();
     if (orgEmail || orgName) {
-      if (!orgEmail) throw new Error('Add an email address for the organizer (or clear the name).');
-      opts.organizer = { email: orgEmail };
-      if (orgName) opts.organizer.name = orgName;
+      if (!orgEmail) {
+        errors['organizer-email'] = 'Add an email address for the organizer (or clear the name).';
+      } else {
+        opts.organizer = { email: orgEmail };
+        if (orgName) opts.organizer.name = orgName;
+      }
     }
-    var attendees = readAttendees();
+    var attendees = readAttendees(errors);
     if (attendees.length) opts.attendees = attendees;
 
-    return opts;
+    if (Object.keys(errors).length) return { errors: errors };
+    return { opts: opts };
   }
 
-  function readAttendees() {
+  function readAttendees(errors) {
     var rows = document.querySelectorAll('#attendee-list .attendee-row');
     var out = [];
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
+      var emailInput = row.querySelector('.att-email');
       var name = row.querySelector('.att-name').value.trim();
-      var email = row.querySelector('.att-email').value.trim();
+      var email = emailInput.value.trim();
       var role = row.querySelector('.att-role').value;
       var status = row.querySelector('.att-status').value;
       var rsvp = row.querySelector('.att-rsvp-input').checked;
       if (!name && !email && !rsvp) continue; /* untouched row */
-      if (!email) throw new Error('Attendee ' + (i + 1) + ' needs an email address.');
+      if (!email) {
+        if (emailInput.id) errors[emailInput.id] = 'Attendee ' + (i + 1) + ' needs an email address.';
+        continue;
+      }
       var a = { email: email };
       if (name) a.name = name;
       if (role) a.role = role;
@@ -508,7 +668,9 @@
     ['TENTATIVE', 'Tentative']
   ];
 
-  function attendeeField(type, cls, placeholder, aria, value) {
+  var attendeeRowSeq = 0;
+
+  function attendeeField(type, cls, placeholder, aria, value, id) {
     var wrap = document.createElement('div');
     wrap.className = 'field';
     var input = document.createElement('input');
@@ -518,6 +680,7 @@
     input.setAttribute('aria-label', aria);
     input.autocomplete = 'off';
     input.value = value;
+    if (id) input.id = id;
     wrap.appendChild(input);
     return wrap;
   }
@@ -546,8 +709,9 @@
     var row = document.createElement('div');
     row.className = 'attendee-row';
 
+    var rowSeq = ++attendeeRowSeq;
     row.appendChild(attendeeField('text', 'att-name', 'Name', 'Attendee name', a.name || ''));
-    row.appendChild(attendeeField('email', 'att-email', 'Email', 'Attendee email', a.email || ''));
+    row.appendChild(attendeeField('email', 'att-email', 'Email', 'Attendee email', a.email || '', 'att-email-' + rowSeq));
     row.appendChild(attendeeSelect('att-role', 'Attendee role', ATTENDEE_ROLES, a.role, 'REQ-PARTICIPANT'));
     row.appendChild(attendeeSelect('att-status', 'Attendee status', ATTENDEE_STATUSES, a.status, 'NEEDS-ACTION'));
 
@@ -946,7 +1110,10 @@
   $('event-form').addEventListener('submit', function (e) {
     e.preventDefault();
     try {
-      var opts = readForm();
+      var result = readForm();
+      if (result.errors) { showFormErrors(result.errors); return; }
+      var opts = result.opts;
+      clearAllFieldErrors();
 
       if (editingEvent !== null) {
         var index = cal.events.indexOf(editingEvent);
@@ -999,7 +1166,9 @@
       render();
       setStatus('Added "' + ev.options.title + '" to the calendar.');
     } catch (err) {
-      setStatus(err.message, true);
+      /* A genuine library rejection is not a user-input problem we could have
+       * predicted; map it onto the responsible field when identifiable. */
+      if (!showFieldErrorFromLib(err)) setStatus(err.message, true);
     }
   });
 
