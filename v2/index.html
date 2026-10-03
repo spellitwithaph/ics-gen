@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#e6eaf1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file: https://static.cloudflareinsights.com; style-src 'self' file:; img-src data:; connect-src https://cloudflareinsights.com; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>ICS Generator — Free iCalendar (.ics) Generator, No Sign-Up</title>
+<meta name="description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar. 100% client-side.">
+<link rel="canonical" href="https://ics-gen.pages.dev/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ICS Generator">
+<meta property="og:title" content="ICS Generator — Free iCalendar (.ics) Generator, No Sign-Up">
+<meta property="og:description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar. 100% client-side.">
+<meta property="og:url" content="https://ics-gen.pages.dev/">
+<meta property="og:image" content="https://ics-gen.pages.dev/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ICS Generator — free client-side iCalendar (.ics) generator">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ICS Generator — Free iCalendar (.ics) Generator, No Sign-Up">
+<meta name="twitter:description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar.">
+<meta name="twitter:image" content="https://ics-gen.pages.dev/og-image.png">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ICS Generator — Free iCalendar (.ics) Generator",
+  "url": "https://ics-gen.pages.dev/",
+  "description": "Free client-side iCalendar (.ics) file generator. Build calendar events in your browser and download a ready-to-import .ics file for Google Calendar, Outlook, or Apple Calendar. Nothing is uploaded.",
+  "applicationCategory": "UtilityApplication",
+  "operatingSystem": "Any (browser)",
+  "browserRequirements": "Requires a modern browser (Blob, Intl.DateTimeFormat, Array.from)",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "featureList": [
+    "All-day, timed and multi-day events",
+    "Recurring events (daily, weekly, monthly, yearly)",
+    "Reminders (VALARM)",
+    "Per-event reminder timing (minutes, hours, or days before the event)",
+    "Attendees and organizer (mailto)",
+    "URL, location, categories and status",
+    "RFC 5545 escaping, 75-octet line folding, UTC/TZID timestamps",
+    "Time zone selector (IANA names, defaults to your device zone)",
+    "Import existing .ics files by drop, file picker, or pasted text",
+    "Copies or downloads the .ics file; 100% client-side, no uploads"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is an .ics file?",
+      "acceptedAnswer": { "@type": "Answer", "text": "An .ics file is the standard calendar format (RFC 5545) used to move events between calendars. Import it into Google Calendar, Outlook, Apple Calendar, or Thunderbird and the event appears in your calendar." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does ICS Generator upload my event data?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. The page runs 100% in your browser — nothing you type ever leaves your device. The hosted site uses cookie-free Cloudflare Web Analytics to count visits (aggregate page views, referrers, and countries); your events and form data are never collected or sent anywhere." }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I create recurring events or reminders?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — daily, weekly, monthly and yearly recurrence with optional end dates, plus reminders set per event — minutes, hours, or days before the start (VALARM) — and all-day, timed and multi-day events with attendees." }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ICS Generator</h1>
+    <p>Build calendar events in your browser and download a ready-to-import
+    <code>.ics</code> file for Google Calendar, Outlook, or Apple Calendar.</p>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="form-heading">
+      <h2 id="form-heading">New event</h2>
+
+      <details id="import-box" open>
+        <summary>Import an .ics file (drop or paste text)</summary>
+        <label id="drop-zone" class="drop-zone" for="import-file">
+          <strong>Drop an .ics file here</strong>
+          <span>or click to choose a file — nothing is uploaded</span>
+          <input id="import-file" type="file" accept=".ics,text/calendar" hidden>
+        </label>
+        <div class="field">
+          <label for="import-text">…or paste .ics text</label>
+          <textarea id="import-text" rows="4" spellcheck="false" placeholder="BEGIN:VCALENDAR&#10;…&#10;END:VCALENDAR"></textarea>
+        </div>
+        <div class="form-actions">
+          <button id="import-text-btn" class="btn" type="button">Import pasted text</button>
+        </div>
+        <p class="hint">Imported events are added to the list and preview; a
+        single-event import also fills the form above.</p>
+      </details>
+      <p id="import-status" class="status-msg" role="status"></p>
+
+      <form id="event-form" novalidate>
+        <div class="field">
+          <label for="title">Title *</label>
+          <input id="title" type="text" placeholder="e.g. Team standup" required>
+        </div>
+
+        <div class="field">
+          <label for="description">Description</label>
+          <textarea id="description" rows="3" placeholder="What is this event about?"></textarea>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="location">Location</label>
+            <input id="location" type="text" placeholder="Room 42 / Zoom / Office">
+          </div>
+          <div class="field">
+            <label for="categories">Categories (comma separated)</label>
+            <input id="categories" type="text" placeholder="Work, Meeting">
+          </div>
+        </div>
+
+        <label class="check"><input id="all-day" type="checkbox"> All-day event</label>
+
+        <div class="field" id="field-timezone">
+          <label for="timezone">Time zone</label>
+          <select id="timezone" aria-describedby="timezone-hint"></select>
+          <p class="hint" id="timezone-hint">Start and end times are read as wall-clock
+          time in this zone. Defaults to the zone your device reports.</p>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="start-date">Start date *</label>
+            <input id="start-date" type="date" required>
+          </div>
+          <div class="field" id="field-start-time">
+            <label for="start-time">Start time</label>
+            <input id="start-time" type="time">
+          </div>
+          <div class="field">
+            <label for="end-date">End date</label>
+            <input id="end-date" type="date">
+          </div>
+          <div class="field" id="field-end-time">
+            <label for="end-time">End time</label>
+            <input id="end-time" type="time">
+          </div>
+        </div>
+
+        <div class="field-row tri" id="recur-row">
+          <div class="field">
+            <label for="recur-freq">Repeat</label>
+            <select id="recur-freq">
+              <option value="NONE">Does not repeat</option>
+              <option value="DAILY">Daily</option>
+              <option value="WEEKLY">Weekly</option>
+              <option value="MONTHLY">Monthly</option>
+              <option value="YEARLY">Yearly</option>
+            </select>
+          </div>
+          <div class="field" id="field-interval">
+            <label for="recur-interval">Every …</label>
+            <input id="recur-interval" type="number" min="1" max="99" value="1">
+          </div>
+          <div class="field" id="field-until">
+            <label for="recur-until">Until (optional)</label>
+            <input id="recur-until" type="date">
+          </div>
+        </div>
+
+        <div class="field-row tri" id="reminder-row">
+          <div class="field">
+            <label for="reminder-toggle">Reminder</label>
+            <select id="reminder-toggle">
+              <option value="off" selected>No reminder</option>
+              <option value="on">Remind me</option>
+            </select>
+          </div>
+          <div class="field" id="field-reminder-value">
+            <label for="reminder-value">Time before</label>
+            <input id="reminder-value" type="number" min="1" max="999" step="1" value="10">
+          </div>
+          <div class="field" id="field-reminder-unit">
+            <label for="reminder-unit">Unit</label>
+            <select id="reminder-unit">
+              <option value="minutes" selected>Minutes</option>
+              <option value="hours">Hours</option>
+              <option value="days">Days</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="status">Event Status</label>
+            <select id="status">
+              <option value="CONFIRMED" selected>Confirmed</option>
+              <option value="TENTATIVE">Tentative</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="url">Web link</label>
+            <input id="url" type="url" placeholder="https://example.com/agenda">
+          </div>
+        </div>
+
+        <fieldset class="contact-group">
+          <legend>Organizer</legend>
+          <div class="field-row">
+            <div class="field">
+              <label for="organizer-name">Name</label>
+              <input id="organizer-name" type="text" placeholder="Pat Manager">
+            </div>
+            <div class="field">
+              <label for="organizer-email">Email</label>
+              <input id="organizer-email" type="email" placeholder="pat@example.com">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="contact-group">
+          <legend>Attendees</legend>
+          <div id="attendee-list"></div>
+          <button id="add-attendee-btn" class="btn ghost" type="button">Add attendee</button>
+          <p class="hint">Each attendee is written as an <code>ATTENDEE:mailto:</code> line.</p>
+        </fieldset>
+
+        <div class="form-actions">
+          <button id="add-btn" type="submit" class="btn primary">Add to .ics</button>
+          <button id="download-btn" class="btn" type="button" disabled>Download .ics</button>
+          <span id="status-msg" class="status-msg" role="status"></span>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="list-heading">
+      <div class="toolbar">
+        <div class="toolbar-buttons">
+          <button id="sample-btn" class="btn" type="button">Load sample events</button>
+          <button id="clear-btn" class="btn ghost" type="button">Clear all</button>
+          <button id="copy-btn" class="btn ghost" type="button" disabled>Copy .ics</button>
+        </div>
+        <h2 id="list-heading"><span id="event-count">0 events</span></h2>
+      </div>
+
+      <ul id="event-list">
+        <li class="empty">No events yet. Add one on the left, or load the samples.</li>
+      </ul>
+
+      <details id="preview-box" open>
+        <summary>Preview: generated .ics text</summary>
+        <pre id="preview"></pre>
+      </details>
+    </section>
+  </main>
+
+  <section class="panel faq" aria-labelledby="faq-heading">
+    <h2 id="faq-heading">Frequently asked questions</h2>
+
+    <details class="faq-item">
+      <summary>What is an .ics file?</summary>
+      <p>An <code>.ics</code> file is the standard calendar format (RFC 5545) used to
+      move events between calendars. Import it into Google Calendar, Outlook, Apple
+      Calendar, or Thunderbird and the event appears in your calendar.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Does ICS Generator upload my event data?</summary>
+      <p>No. The page runs 100% in your browser — nothing you type ever leaves
+      your device. The hosted site uses cookie-free
+      <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
+      to count visits (aggregate page views, referrers, and countries); your
+      events and form data are never collected or sent anywhere.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Can I create recurring events or reminders?</summary>
+      <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
+      plus reminders set per event — minutes, hours, or days before the start — and
+      all-day, timed, and multi-day events with attendees. In one .ics file each event
+      carries its own reminder.</p>
+    </details>
+  </section>
+
+  <footer>
+    Validate output at <a href="https://icalendar.org/validator.html" target="_blank" rel="noopener noreferrer">icalendar.org</a>.
+  </footer>
+</div>
+
+<script src="ics.js"></script>
+<script src="ics-parse.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
