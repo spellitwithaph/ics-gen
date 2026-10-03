@@ -965,8 +965,13 @@
         del.className = 'btn ghost';
         del.textContent = 'Remove';
         del.addEventListener('click', function () {
-          cal.removeEvent(i);
+          var removed = cal.events[i];
+          var removedIndex = i;
+          cal.removeEvent(removedIndex);
           render();
+          showUndoToast('Removed "' + removed.options.title + '".', function () {
+            cal.events.splice(removedIndex, 0, removed);
+          });
         });
 
         li.appendChild(info);
@@ -1105,6 +1110,116 @@
     $('title').focus();
   });
 
+  /* ---------- undo toast ---------- */
+  /* One level of undo for destructive list actions. Showing a new toast
+   * replaces any previous snapshot, so there is no stack: only the most recent
+   * action can be undone. */
+  var UNDO_TIMEOUT_MS = 8000;
+  var undoTimer = null;
+  var undoAction = null;
+
+  function hideUndoToast(refocus) {
+    var toast = $('undo-toast');
+    var hadFocus = toast.contains(document.activeElement);
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    undoAction = null;
+    toast.hidden = true;
+    if (refocus || hadFocus) $('title').focus();
+  }
+
+  function showUndoToast(message, undoFn) {
+    undoAction = { message: message, undo: undoFn };
+    var toast = $('undo-toast');
+    toast.hidden = false;
+    $('undo-msg').textContent = message;
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = setTimeout(function () { hideUndoToast(false); }, UNDO_TIMEOUT_MS);
+    $('undo-btn').focus();
+  }
+
+  function runUndo() {
+    var action = undoAction;
+    if (!action) return;
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    undoAction = null;
+    $('undo-toast').hidden = true;
+    try {
+      action.undo();
+    } catch (e) {
+      setStatus('Could not undo that action.', true);
+      return;
+    }
+    render(); /* also persists the restored list */
+    setStatus('Undone.');
+    $('title').focus();
+  }
+
+  $('undo-btn').addEventListener('click', runUndo);
+
+  document.addEventListener('keydown', function (e) {
+    if ($('undo-toast').hidden) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      hideUndoToast(true);
+      return;
+    }
+    /* Ctrl/Cmd+Z is a shortcut only outside text fields, where the browser's
+     * own undo must keep working. */
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+      var t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      runUndo();
+    }
+  });
+
+  /* Snapshot every control in the event form (plus attendee rows) so loading
+   * samples can be undone back to the visitor's work. */
+  function snapshotForm() {
+    var values = [];
+    var fields = $('event-form').querySelectorAll('input, select, textarea');
+    for (var i = 0; i < fields.length; i++) {
+      var el = fields[i];
+      if (!el.id || (el.closest && el.closest('#attendee-list'))) continue;
+      values.push({
+        id: el.id,
+        checked: el.type === 'checkbox' ? el.checked : null,
+        value: el.type === 'checkbox' ? null : el.value
+      });
+    }
+    var attendees = [];
+    var rows = document.querySelectorAll('#attendee-list .attendee-row');
+    for (var j = 0; j < rows.length; j++) {
+      var row = rows[j];
+      attendees.push({
+        name: row.querySelector('.att-name').value,
+        email: row.querySelector('.att-email').value,
+        role: row.querySelector('.att-role').value,
+        status: row.querySelector('.att-status').value,
+        rsvp: row.querySelector('.att-rsvp-input').checked
+      });
+    }
+    return { values: values, attendees: attendees };
+  }
+
+  function restoreForm(snap) {
+    if (!snap) return;
+    var box = $('attendee-list');
+    box.textContent = '';
+    snap.attendees.forEach(addAttendeeRow);
+    snap.values.forEach(function (rec) {
+      var el = $(rec.id);
+      if (!el) return;
+      if (rec.checked !== null) el.checked = rec.checked;
+      else el.value = rec.value;
+    });
+    syncAllDayUI();
+    syncRecurUI();
+    syncReminderUI();
+    updateKeptHint();
+    rememberStartInstant();
+  }
+
   /* ---------- actions ---------- */
 
   $('event-form').addEventListener('submit', function (e) {
@@ -1214,31 +1329,24 @@
   });
 
   $('clear-btn').addEventListener('click', function () {
-    if (cal.events.length && !window.confirm('Remove all ' + cal.events.length + ' event(s) from the list?')) return;
+    if (!cal.events.length) {
+      cal.clear();
+      render();
+      setStatus('Cleared.');
+      return;
+    }
+    var snapshot = cal.events.slice();
     cal.clear();
     render();
     setStatus('Cleared.');
+    showUndoToast('Cleared ' + snapshot.length + ' event(s).', function () {
+      cal.events = snapshot;
+    });
   });
 
-  /* True when the visitor has put something into the form. The date/time inputs
-   * are pre-filled on load, so they alone do not count. */
-  function formHasUserContent() {
-    if ($('title').value.trim() || $('description').value.trim() ||
-        $('location').value.trim() || $('categories').value.trim() ||
-        $('url').value.trim() ||
-        $('organizer-name').value.trim() || $('organizer-email').value.trim()) return true;
-    if (document.querySelector('#attendee-list .attendee-row')) return true;
-    if ($('recur-freq').value !== 'NONE') return true;
-    if ($('reminder-toggle').value === 'on') return true;
-    if ($('all-day').checked) return true;
-    return false;
-  }
-
   $('sample-btn').addEventListener('click', function () {
-    var changes = [];
-    if (cal.events.length) changes.push('replace the ' + cal.events.length + ' event(s) in the list');
-    if (formHasUserContent()) changes.push('overwrite the form fields');
-    if (changes.length && !window.confirm('Load sample events? This will ' + changes.join(' and ') + '.')) return;
+    var previousEvents = cal.events.slice();
+    var previousForm = snapshotForm();
 
     cal.clear();
 
@@ -1289,6 +1397,11 @@
     /* Show the richest sample in the form so the .ics ↔ fields mapping is visible. */
     populateForm(designReview);
     setStatus('Loaded 3 sample events. The form shows "Design review" so you can see how it maps to the fields.');
+    showUndoToast('Loaded 3 sample events.', function () {
+      exitEditMode();
+      cal.events = previousEvents;
+      restoreForm(previousForm);
+    });
   });
 
   /* ---------- importing .ics ---------- */
