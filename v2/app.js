@@ -506,7 +506,12 @@
     remove.className = 'btn ghost att-remove';
     remove.textContent = 'Remove';
     remove.setAttribute('aria-label', 'Remove attendee');
-    remove.addEventListener('click', function () { box.removeChild(row); });
+    remove.addEventListener('click', function () {
+      box.removeChild(row);
+      /* Focus lands on the removed row's button otherwise; keep it on a
+       * stable control so keyboard visitors are not stranded. */
+      $('add-attendee-btn').focus();
+    });
     row.appendChild(remove);
 
     box.appendChild(row);
@@ -1020,4 +1025,6 @@
   syncRecurUI();
   syncReminderUI();
   render();
+  /* Start keyboard visitors in the first field (no scroll-jumping). */
+  $('title').focus();
 })();
