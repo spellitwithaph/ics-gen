@@ -744,6 +744,8 @@
     $('copy-btn').disabled = !has;
     /* The preview starts expanded (see the `open` attribute in index.html) and
      * never auto-collapses; the visitor can still toggle it. */
+
+    saveEvents();
   }
 
   /* ---------- edit mode ---------- */
@@ -1148,6 +1150,80 @@
     e.preventDefault();
   });
 
+  /* ---------- persistence ---------- */
+
+  /* Events survive a reload in localStorage. Dates are stored as a
+   * self-describing { __type: 'date', iso } wrapper; { year, month, day }
+   * objects are already JSON-safe and are kept as-is. Every access is wrapped
+   * because localStorage throws on some schemes (file:// in some browsers,
+   * private mode, disabled storage) and a failure must never break the page. */
+  var STORAGE_KEY = 'ics-gen-v2';
+  var STORAGE_VERSION = 1;
+  var MAX_RESTORED_EVENTS = 200;
+
+  function serializeDateValue(v) {
+    if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
+    if (v instanceof Date) return { __type: 'date', iso: v.toISOString() };
+    return v;
+  }
+
+  function serializeOptions(o) {
+    var out = copyPlain(o);
+    if (o.start != null) out.start = serializeDateValue(o.start);
+    if (o.end != null) out.end = serializeDateValue(o.end);
+    return out;
+  }
+
+  function deserializeDateValue(v) {
+    if (v && v.__type === 'date' && typeof v.iso === 'string') {
+      var d = new Date(v.iso);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
+    return v;
+  }
+
+  function deserializeOptions(o) {
+    var out = copyPlain(o);
+    if (o.start != null) out.start = deserializeDateValue(o.start);
+    if (o.end != null) out.end = deserializeDateValue(o.end);
+    return out;
+  }
+
+  function saveEvents() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: STORAGE_VERSION,
+        events: cal.events.map(function (ev) { return serializeOptions(ev.options); })
+      }));
+    } catch (e) { /* quota/security error — ignore */ }
+  }
+
+  /* Returns the number of events restored (0 when there is nothing valid). */
+  function restoreEvents() {
+    var raw;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch (e) { return 0; }
+    if (!raw) return 0;
+
+    var data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) { return 0; }
+    if (!data || data.version !== STORAGE_VERSION || !Array.isArray(data.events)) return 0;
+
+    var count = 0;
+    data.events.slice(0, MAX_RESTORED_EVENTS).forEach(function (options) {
+      if (!options || typeof options !== 'object') return;
+      try {
+        cal.addEvent(deserializeOptions(options));
+        count++;
+      } catch (e) { /* an event that no longer validates is skipped */ }
+    });
+    return count;
+  }
+
   /* ---------- init ---------- */
 
   defaultFormDates();
@@ -1155,7 +1231,9 @@
   syncAllDayUI();
   syncRecurUI();
   syncReminderUI();
+  var restored = restoreEvents();
   render();
+  if (restored) setStatus('Restored ' + restored + ' saved event(s).');
   /* Start keyboard visitors in the first field (no scroll-jumping). */
   $('title').focus();
 })();
