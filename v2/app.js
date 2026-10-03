@@ -676,6 +676,28 @@
     return bits.join(' · ');
   }
 
+  /* Sort key for the list view: an all-day event sorts by its calendar day
+   * (UTC midnight), a timed event by its instant. */
+  function eventSortTime(ev) {
+    if (isDateParts(ev.start)) return Date.UTC(ev.start.year, ev.start.month - 1, ev.start.day);
+    return ev.start.getTime();
+  }
+
+  /* The list is shown in start order, but every action must still target the
+   * event's real index in cal.events (and the preview keeps insertion order),
+   * so the sorted view carries the original index alongside each event. */
+  function sortedEventEntries() {
+    return cal.events
+      .map(function (ev, index) { return { realIndex: index, ev: ev }; })
+      .sort(function (a, b) {
+        var byStart = eventSortTime(a.ev) - eventSortTime(b.ev);
+        if (byStart) return byStart;
+        var byTitle = String(a.ev.options.title).localeCompare(String(b.ev.options.title));
+        if (byTitle) return byTitle;
+        return a.realIndex - b.realIndex;
+      });
+  }
+
   function render() {
     var list = $('event-list');
     list.textContent = '';
@@ -686,7 +708,9 @@
       li.textContent = 'No events yet — add your first event with the form, or load the samples.';
       list.appendChild(li);
     } else {
-      cal.events.forEach(function (ev, i) {
+      sortedEventEntries().forEach(function (entry) {
+        var ev = entry.ev;
+        var i = entry.realIndex;
         var li = document.createElement('li');
         li.setAttribute('data-index', i);
 
