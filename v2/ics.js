@@ -296,6 +296,24 @@
   }
 
   /*
+   * Probe an IANA time zone once. A zone Intl cannot resolve would throw from
+   * zoneParts() while rendering or describing the event, and a bad zone loaded
+   * from storage could brick the page on every load; rejecting it here surfaces
+   * a normal validation Error at the library boundary and keeps those
+   * render/describe paths safe.
+   */
+  function assertTimeZone(timezone) {
+    var s = String(timezone);
+    rejectControlChars(s, 'event "timezone"');
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: s });
+    } catch (e) {
+      throw new Error('ICS Generator: unknown time zone "' + s + '".');
+    }
+    return s;
+  }
+
+  /*
    * Eager validation: every single-line field is checked when the event is
    * constructed, so an invalid event can never enter the calendar and break a
    * later render(). The same checks run again during serialization (toLines)
@@ -303,7 +321,7 @@
    */
   function validateEventOptions(options) {
     if (options.url) sanitizeUrl(options.url);
-    if (options.timezone) rejectControlChars(String(options.timezone), 'event "timezone"');
+    if (options.timezone) assertTimeZone(options.timezone);
     if (options.rrule) rejectControlChars(String(options.rrule), 'event "rrule"');
     if (options.status) rejectControlChars(String(options.status), 'event "status"');
     (options.alarms || []).forEach(function (alarm) {

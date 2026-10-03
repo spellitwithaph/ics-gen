@@ -254,6 +254,28 @@ test('timezone values containing control characters are rejected', function () {
   }, /control characters/);
 });
 
+test('unknown time zones are rejected at construction', function () {
+  assert.throws(function () {
+    makeEvent({ title: 'Bad zone', start: new Date('2026-01-05T10:00:00Z'), timezone: 'Not/AZone' });
+  }, /unknown time zone/i);
+});
+
+test('updateEvent rejects an unknown time zone and leaves the calendar alone', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  assert.throws(function () {
+    cal.updateEvent(0, { title: 'A', start: new Date('2026-01-05T10:00:00Z'), timezone: 'Not/AZone' });
+  }, /unknown time zone/i);
+  assert.eq(cal.events.length, 1, 'a failed update must not change the calendar');
+  assert.eq(cal.events[0].options.timezone, undefined);
+});
+
+test('valid IANA zones, UTC, and an omitted zone all pass validation', function () {
+  assert.ok(makeEvent({ title: 'NY', start: new Date('2026-01-05T10:00:00Z'), timezone: 'America/New_York' }));
+  assert.ok(makeEvent({ title: 'UTC', start: new Date('2026-01-05T10:00:00Z'), timezone: 'UTC' }));
+  assert.ok(makeEvent({ title: 'None', start: new Date('2026-01-05T10:00:00Z') }));
+});
+
 /* ---------- recurrence ---------- */
 
 test('rrule is passed through to RRULE', function () {

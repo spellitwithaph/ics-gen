@@ -1290,7 +1290,15 @@
   syncAllDayUI();
   syncRecurUI();
   syncReminderUI();
-  var restored = restoreEvents();
+  var restored = 0;
+  try {
+    restored = restoreEvents();
+  } catch (e) {
+    /* No restore path may leave the page half-initialized: drop whatever was
+     * loaded and continue with an empty list. */
+    cal.clear();
+    setStatus('Saved events could not be restored.', true);
+  }
   render();
   if (restored) setStatus('Restored ' + restored + ' saved event(s).');
   /* Start keyboard visitors in the first field (no scroll-jumping). */
