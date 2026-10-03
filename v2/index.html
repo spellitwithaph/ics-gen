@@ -146,13 +146,14 @@
             <input id="start-time" type="time">
           </div>
           <div class="field">
-            <label for="end-date">End date</label>
+            <label for="end-date" id="end-date-label">End date</label>
             <input id="end-date" type="date">
           </div>
           <div class="field" id="field-end-time">
             <label for="end-time">End time</label>
             <input id="end-time" type="time">
           </div>
+          <p class="hint" id="all-day-end-hint" hidden>All-day end dates are exclusive: an event ending Jan 6 runs through Jan 5 only.</p>
         </div>
 
         <div class="field-row tri" id="recur-row">

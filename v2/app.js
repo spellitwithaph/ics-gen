@@ -176,6 +176,7 @@
     endDateEl.value = toISODate(now);
     startTimeEl.value = '09:00';
     endTimeEl.value = '10:00';
+    rememberStartInstant();
   }
 
   function syncAllDayUI() {
@@ -184,6 +185,9 @@
     $('field-end-time').hidden = allDay;
     /* All-day events are date-only, so a time zone would be misleading. */
     $('field-timezone').hidden = allDay;
+    /* DTEND on an all-day event is exclusive — only worth explaining when the
+     * end date itself is visible. */
+    $('all-day-end-hint').hidden = !allDay;
     if (allDay && endDateEl.value && startDateEl.value && endDateEl.value <= startDateEl.value) {
       endDateEl.value = addDays(startDateEl.value, 1);
     }
@@ -208,6 +212,42 @@
   $('all-day').addEventListener('change', syncAllDayUI);
   $('recur-freq').addEventListener('change', syncRecurUI);
   $('reminder-toggle').addEventListener('change', syncReminderUI);
+
+  /* Keep the end after the start when the start moves past it: shift the end by
+   * the duration entered before the change (min 1 hour). The previous start
+   * instant is cached, because a change event only carries the new value. */
+  var prevStartInstant = null;
+
+  function instantFromDateInput(dateStr, timeStr) {
+    if (!dateStr) return null;
+    var d = parseDateInput(dateStr);
+    var t = parseTimeInput(timeStr || '00:00'); /* missing time → midnight */
+    return zonedTimeToDate(d.year, d.month, d.day, t.hour, t.minute, timezoneEl.value || localTimeZone());
+  }
+
+  function rememberStartInstant() {
+    prevStartInstant = instantFromDateInput(startDateEl.value, startTimeEl.value);
+  }
+
+  function keepEndAfterStart() {
+    if ($('all-day').checked) {
+      /* Plain date strings: end <= start becomes start + 1 day (syncAllDayUI). */
+      syncAllDayUI();
+    } else {
+      var newStart = instantFromDateInput(startDateEl.value, startTimeEl.value);
+      var end = instantFromDateInput(endDateEl.value, endTimeEl.value);
+      if (newStart && end && prevStartInstant && newStart.getTime() >= end.getTime()) {
+        var duration = Math.max(end.getTime() - prevStartInstant.getTime(), 60 * 60000);
+        var p = zoneParts(new Date(newStart.getTime() + duration),
+                          timezoneEl.value || localTimeZone());
+        endDateEl.value = isoFromParts(p);
+        endTimeEl.value = pad2(p.hour) + ':' + pad2(p.minute);
+      }
+    }
+    rememberStartInstant();
+  }
+  startDateEl.addEventListener('change', keepEndAfterStart);
+  startTimeEl.addEventListener('change', keepEndAfterStart);
 
   /* ---------- reading the form ---------- */
 
@@ -517,6 +557,7 @@
       timezoneEl.value = zone;
     }
     syncAllDayUI();
+    rememberStartInstant();
 
     var rule = ev.rrule ? simpleRule(ev.rrule, allDay, timezoneEl.value) : null;
     $('recur-freq').value = rule ? rule.freq : 'NONE';
@@ -671,6 +712,7 @@
         endDateEl.value = toISODate(next);
         endTimeEl.value = toISOTime(next);
       }
+      rememberStartInstant();
       render();
       setStatus('Added "' + ev.options.title + '" to the calendar.');
     } catch (err) {
