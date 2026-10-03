@@ -92,6 +92,24 @@ summary:focus-visible,
 textarea { resize: vertical; }
 .field .hint { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
 
+/* Inline validation */
+.field.invalid input,
+.field.invalid select,
+.field.invalid textarea { border-color: var(--danger); }
+.field.invalid input:focus,
+.field.invalid select:focus,
+.field.invalid textarea:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.15);
+}
+.field-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--danger);
+}
+
 /* Import panel */
 #import-box {
   margin: 0 0 16px;
@@ -250,6 +268,28 @@ pre {
 
 .status-msg { font-size: 13px; color: var(--muted); }
 .status-msg.error { color: var(--danger); }
+
+/* Undo toast */
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  max-width: min(92vw, 520px);
+  padding: 10px 12px 10px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  color: var(--text);
+}
+.undo-toast .btn { padding: 6px 12px; font-size: 13px; }
 
 footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 28px; }
 footer a { color: var(--accent); }

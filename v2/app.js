@@ -188,7 +188,10 @@
     rememberStartInstant();
   }
 
-  function syncAllDayUI() {
+  /* Visibility only: which controls an all-day event hides. Kept separate from
+   * the date correction below so restoring a snapshot can reproduce its values
+   * exactly without the auto-bump rewriting the visitor's draft. */
+  function syncAllDayVisibility() {
     var allDay = $('all-day').checked;
     $('field-start-time').hidden = allDay;
     $('field-end-time').hidden = allDay;
@@ -197,8 +200,15 @@
     /* DTEND on an all-day event is exclusive — only worth explaining when the
      * end date itself is visible. */
     $('all-day-end-hint').hidden = !allDay;
+  }
+
+  function syncAllDayUI() {
+    syncAllDayVisibility();
+    var allDay = $('all-day').checked;
     if (allDay && endDateEl.value && startDateEl.value && endDateEl.value <= startDateEl.value) {
       endDateEl.value = addDays(startDateEl.value, 1);
+      /* The rewritten end date is valid again, so drop any stale inline error. */
+      clearFieldError('end-date');
     }
   }
 
@@ -276,35 +286,197 @@
    * so a later start change measures duration from the correct instant. */
   timezoneEl.addEventListener('change', rememberStartInstant);
 
+  /* ---------- validation ---------- */
+
+  /* Inline field errors live next to the control they describe: the `.field`
+   * wrapper gets `.invalid`, the control gets aria-invalid/aria-describedby,
+   * and a <p class="field-error"> is inserted right after the control. */
+
+  function fieldErrorId(fieldId) { return fieldId + '-error'; }
+
+  function setFieldError(fieldId, message) {
+    var input = $(fieldId);
+    if (!input) return;
+    var wrap = input.closest ? input.closest('.field') : null;
+    if (!wrap) return;
+    var errId = fieldErrorId(fieldId);
+    wrap.classList.add('invalid');
+    input.setAttribute('aria-invalid', 'true');
+    var ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    if (ids.indexOf(errId) === -1) ids.push(errId);
+    input.setAttribute('aria-describedby', ids.join(' '));
+
+    var err = document.getElementById(errId);
+    if (!err) {
+      err = document.createElement('p');
+      err.className = 'field-error';
+      err.id = errId;
+      if (input.nextSibling) wrap.insertBefore(err, input.nextSibling);
+      else wrap.appendChild(err);
+    }
+    err.textContent = message;
+  }
+
+  function clearFieldError(fieldId) {
+    var input = $(fieldId);
+    if (!input) return;
+    var wrap = input.closest ? input.closest('.field') : null;
+    if (wrap) wrap.classList.remove('invalid');
+
+    var errId = fieldErrorId(fieldId);
+    input.removeAttribute('aria-invalid');
+    var ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)
+      .filter(function (id) { return id !== errId; });
+    if (ids.length) input.setAttribute('aria-describedby', ids.join(' '));
+    else input.removeAttribute('aria-describedby');
+
+    var err = document.getElementById(errId);
+    if (err && err.parentNode) err.parentNode.removeChild(err);
+  }
+
+  function clearAllFieldErrors() {
+    var wraps = document.querySelectorAll('#event-form .field.invalid');
+    for (var i = 0; i < wraps.length; i++) {
+      wraps[i].classList.remove('invalid');
+      var input = wraps[i].querySelector('input, select, textarea');
+      if (!input) continue;
+      input.removeAttribute('aria-invalid');
+      if (!input.id) continue;
+      var errId = fieldErrorId(input.id);
+      var ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)
+        .filter(function (id) { return id !== errId; });
+      if (ids.length) input.setAttribute('aria-describedby', ids.join(' '));
+      else input.removeAttribute('aria-describedby');
+    }
+    var errs = document.querySelectorAll('#event-form .field-error');
+    for (var j = 0; j < errs.length; j++) {
+      if (errs[j].parentNode) errs[j].parentNode.removeChild(errs[j]);
+    }
+  }
+
+  /* Errors clear as soon as the visitor edits the offending control. Delegated
+   * so dynamically added attendee rows are covered too. */
+  $('event-form').addEventListener('input', function (e) {
+    if (e.target && e.target.id) clearFieldError(e.target.id);
+  });
+  $('event-form').addEventListener('change', function (e) {
+    if (e.target && e.target.id) clearFieldError(e.target.id);
+  });
+
+  function focusFirstInvalidField() {
+    var controls = $('event-form').querySelectorAll('input, select, textarea');
+    for (var i = 0; i < controls.length; i++) {
+      if (controls[i].getAttribute('aria-invalid') === 'true') { controls[i].focus(); return; }
+    }
+  }
+
+  /* Paint a map of field id → message and move focus to the first bad field in
+   * DOM order; #status-msg carries a short generic explanation. */
+  function showFormErrors(errors) {
+    clearAllFieldErrors();
+    Object.keys(errors).forEach(function (id) { setFieldError(id, errors[id]); });
+    setStatus('Fix the highlighted fields and try again.', true);
+    focusFirstInvalidField();
+  }
+
+  function firstInvalidAttendeeEmail() {
+    var inputs = document.querySelectorAll('#attendee-list .att-email');
+    for (var i = 0; i < inputs.length; i++) {
+      var v = inputs[i].value.trim();
+      if (v && !looksLikeEmail(v)) return inputs[i];
+    }
+    return null;
+  }
+
+  /* Map a genuine library rejection (ics.js validateEventOptions/VEvent) onto
+   * the control that caused it. Returns false when it is not identifiable, so
+   * the caller can fall back to the status line. */
+  function showFieldErrorFromLib(err) {
+    var msg = String((err && err.message) || '');
+    var generic = 'Fix the highlighted fields and try again.';
+
+    if (/event "url"/.test(msg)) {
+      setFieldError('url', 'Enter a valid http(s) link, for example https://example.com/agenda.');
+      setStatus(generic, true);
+      focusFirstInvalidField();
+      return true;
+    }
+    /* A control-character name is not an email problem: match it first so the
+     * message lands on #organizer-name instead of the email field. */
+    if (/organizer name/.test(msg)) {
+      setFieldError('organizer-name', 'Remove special characters from the organizer name.');
+      setStatus(generic, true);
+      focusFirstInvalidField();
+      return true;
+    }
+    if (/organizer email/.test(msg)) {
+      setFieldError('organizer-email', 'Enter a valid email address for the organizer.');
+      setStatus(generic, true);
+      focusFirstInvalidField();
+      return true;
+    }
+    if (/attendee/.test(msg)) {
+      var input = firstInvalidAttendeeEmail();
+      if (input && input.id) {
+        setFieldError(input.id, 'Enter a valid email address for this attendee.');
+        setStatus(generic, true);
+        input.focus();
+        return true;
+      }
+    }
+    return false;
+  }
+
   /* ---------- reading the form ---------- */
 
+  /* Build the addEvent options. User-input problems are collected as a map of
+   * field id → message (no throw) so the caller can render inline errors;
+   * library-level checks still live in ics.js and are caught at the submit
+   * boundary (showFieldErrorFromLib). */
   function readForm() {
+    var errors = {};
+    var opts = {};
+
     var title = $('title').value.trim();
-    if (!title) throw new Error('Please give the event a title.');
+    if (!title) errors['title'] = 'Please give the event a title.';
+    opts.title = title;
 
     var allDay = $('all-day').checked;
-    var opts = { title: title, allDay: allDay };
+    opts.allDay = allDay;
 
     if (allDay) {
-      if (!startDateEl.value) throw new Error('Pick a start date.');
-      opts.start = parseDateInput(startDateEl.value); /* { year, month, day } — timezone-safe */
+      if (!startDateEl.value) {
+        errors['start-date'] = 'Pick a start date.';
+      } else {
+        opts.start = parseDateInput(startDateEl.value); /* { year, month, day } — timezone-safe */
+      }
       if (endDateEl.value) opts.end = parseDateInput(endDateEl.value);
+      /* DTEND is exclusive, so end == start would emit a zero-length (or
+       * immediate) all-day event — reject it rather than write DTEND == DTSTART. */
+      if (opts.start && opts.end && isoFromParts(opts.end) <= isoFromParts(opts.start)) {
+        errors['end-date'] = 'The end date must be after the start date.';
+      }
     } else {
-      if (!startDateEl.value) throw new Error('Pick a start date.');
-      if (!startTimeEl.value) throw new Error('Pick a start time.');
+      if (!startDateEl.value) errors['start-date'] = 'Pick a start date.';
+      if (!startTimeEl.value) errors['start-time'] = 'Pick a start time.';
       /* Read the typed wall-clock time in the chosen zone. 'UTC' is emitted as
        * a plain ...Z timestamp (no TZID); every other zone gets a TZID. */
       var tz = timezoneEl.value || localTimeZone();
       if (tz !== 'UTC') opts.timezone = tz;
-      var sd = parseDateInput(startDateEl.value);
-      var st = parseTimeInput(startTimeEl.value);
-      opts.start = zonedTimeToDate(sd.year, sd.month, sd.day, st.hour, st.minute, tz);
+      if (startDateEl.value && startTimeEl.value) {
+        var sd = parseDateInput(startDateEl.value);
+        var st = parseTimeInput(startTimeEl.value);
+        opts.start = zonedTimeToDate(sd.year, sd.month, sd.day, st.hour, st.minute, tz);
+      }
       if (endDateEl.value && endTimeEl.value) {
         var ed = parseDateInput(endDateEl.value);
         var et = parseTimeInput(endTimeEl.value);
         opts.end = zonedTimeToDate(ed.year, ed.month, ed.day, et.hour, et.minute, tz);
-        if (opts.end <= opts.start) throw new Error('The end date/time must be after the start.');
-      } else {
+        if (opts.start && opts.end <= opts.start) {
+          errors['end-date'] = 'The end date/time must be after the start.';
+          errors['end-time'] = 'The end date/time must be after the start.';
+        }
+      } else if (opts.start) {
         opts.end = new Date(opts.start.getTime() + 60 * 60000); /* default: 1 hour */
       }
     }
@@ -345,39 +517,50 @@
     var on = $('reminder-toggle').value === 'on';
     if (on) {
       var n = parseInt($('reminder-value').value, 10);
-      if (!n || n < 1) throw new Error('Pick how long before the event to remind you (1 or more).');
-      var unit = $('reminder-unit').value; /* minutes | hours | days */
-      var dur = unit === 'days' ? 'P' + n + 'D'
-        : unit === 'hours' ? 'PT' + n + 'H'
-        : 'PT' + n + 'M';
-      opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
+      if (!n || n < 1) {
+        errors['reminder-value'] = 'Pick how long before the event to remind you (1 or more).';
+      } else {
+        var unit = $('reminder-unit').value; /* minutes | hours | days */
+        var dur = unit === 'days' ? 'P' + n + 'D'
+          : unit === 'hours' ? 'PT' + n + 'H'
+          : 'PT' + n + 'M';
+        opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
+      }
     }
 
     var orgName = $('organizer-name').value.trim();
     var orgEmail = $('organizer-email').value.trim();
     if (orgEmail || orgName) {
-      if (!orgEmail) throw new Error('Add an email address for the organizer (or clear the name).');
-      opts.organizer = { email: orgEmail };
-      if (orgName) opts.organizer.name = orgName;
+      if (!orgEmail) {
+        errors['organizer-email'] = 'Add an email address for the organizer (or clear the name).';
+      } else {
+        opts.organizer = { email: orgEmail };
+        if (orgName) opts.organizer.name = orgName;
+      }
     }
-    var attendees = readAttendees();
+    var attendees = readAttendees(errors);
     if (attendees.length) opts.attendees = attendees;
 
-    return opts;
+    if (Object.keys(errors).length) return { errors: errors };
+    return { opts: opts };
   }
 
-  function readAttendees() {
+  function readAttendees(errors) {
     var rows = document.querySelectorAll('#attendee-list .attendee-row');
     var out = [];
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
+      var emailInput = row.querySelector('.att-email');
       var name = row.querySelector('.att-name').value.trim();
-      var email = row.querySelector('.att-email').value.trim();
+      var email = emailInput.value.trim();
       var role = row.querySelector('.att-role').value;
       var status = row.querySelector('.att-status').value;
       var rsvp = row.querySelector('.att-rsvp-input').checked;
       if (!name && !email && !rsvp) continue; /* untouched row */
-      if (!email) throw new Error('Attendee ' + (i + 1) + ' needs an email address.');
+      if (!email) {
+        if (emailInput.id) errors[emailInput.id] = 'Attendee ' + (i + 1) + ' needs an email address.';
+        continue;
+      }
       var a = { email: email };
       if (name) a.name = name;
       if (role) a.role = role;
@@ -508,7 +691,9 @@
     ['TENTATIVE', 'Tentative']
   ];
 
-  function attendeeField(type, cls, placeholder, aria, value) {
+  var attendeeRowSeq = 0;
+
+  function attendeeField(type, cls, placeholder, aria, value, id) {
     var wrap = document.createElement('div');
     wrap.className = 'field';
     var input = document.createElement('input');
@@ -518,6 +703,7 @@
     input.setAttribute('aria-label', aria);
     input.autocomplete = 'off';
     input.value = value;
+    if (id) input.id = id;
     wrap.appendChild(input);
     return wrap;
   }
@@ -546,8 +732,9 @@
     var row = document.createElement('div');
     row.className = 'attendee-row';
 
+    var rowSeq = ++attendeeRowSeq;
     row.appendChild(attendeeField('text', 'att-name', 'Name', 'Attendee name', a.name || ''));
-    row.appendChild(attendeeField('email', 'att-email', 'Email', 'Attendee email', a.email || ''));
+    row.appendChild(attendeeField('email', 'att-email', 'Email', 'Attendee email', a.email || '', 'att-email-' + rowSeq));
     row.appendChild(attendeeSelect('att-role', 'Attendee role', ATTENDEE_ROLES, a.role, 'REQ-PARTICIPANT'));
     row.appendChild(attendeeSelect('att-status', 'Attendee status', ATTENDEE_STATUSES, a.status, 'NEEDS-ACTION'));
 
@@ -596,6 +783,7 @@
   });
 
   function populateForm(ev) {
+    clearAllFieldErrors();
     $('title').value = ev.title || '';
     $('description').value = ev.description || '';
     $('location').value = ev.location || '';
@@ -791,7 +979,10 @@
             setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
             return;
           }
+          /* This mutation supersedes any pending undo: drop it without
+           * restoring so a later Undo cannot wipe the duplicate. */
           cal.addEvent(cloneEventOptions(ev.options));
+          dismissUndoToast();
           render();
           setStatus('Duplicated "' + ev.options.title + '".');
         });
@@ -801,8 +992,19 @@
         del.className = 'btn ghost';
         del.textContent = 'Remove';
         del.addEventListener('click', function () {
-          cal.removeEvent(i);
+          var removed = cal.events[i];
+          var removedIndex = i;
+          cal.removeEvent(removedIndex);
           render();
+          showUndoToast('Removed "' + removed.options.title + '".', function () {
+            /* Reinsertion grows the list, so respect the same cap every other
+             * growth point uses; refuse rather than lose an event on reload. */
+            if (cal.events.length >= MAX_EVENTS) {
+              setStatus('The list is full — the removal could not be undone.', true);
+              return false;
+            }
+            cal.events.splice(removedIndex, 0, removed);
+          }, del);
         });
 
         li.appendChild(info);
@@ -941,12 +1143,208 @@
     $('title').focus();
   });
 
+  /* ---------- undo toast ---------- */
+  /* One level of undo for destructive list actions. Showing a new toast
+   * replaces any previous snapshot, so there is no stack: only the most recent
+   * action can be undone. */
+  var UNDO_TIMEOUT_MS = 8000;
+  var undoTimer = null;
+  var undoAction = null;
+  var undoTrigger = null;
+  var undoHover = false;
+
+  /* Drop the pending undo without restoring and without any focus side-effect.
+   * Used when a later list mutation takes ownership of the list: the undo
+   * belongs to the last action only, so it must not be able to fire against a
+   * list that has changed since. */
+  function dismissUndoToast() {
+    pauseUndoTimer();
+    undoAction = null;
+    undoTrigger = null;
+    undoHover = false;
+    $('undo-toast').hidden = true;
+  }
+
+  function pauseUndoTimer() {
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+  }
+
+  /* The timer must not run down while the visitor is reading or tabbing through
+   * the toast (WCAG 2.2.1): pause on pointer hover and keyboard focus. */
+  function undoTimerPaused() {
+    var toast = $('undo-toast');
+    if (toast.hidden) return true;
+    return undoHover || toast.contains(document.activeElement);
+  }
+
+  function resumeUndoTimer() {
+    if (undoTimer || undoTimerPaused()) return;
+    undoTimer = setTimeout(function () { hideUndoToast(); }, UNDO_TIMEOUT_MS);
+  }
+
+  /* Refocus after the toast goes away only when focus was inside it, and prefer
+   * the button that triggered the action (if it still exists). */
+  function refocusAfterUndo(trigger) {
+    if (trigger && trigger.isConnected) { trigger.focus(); return; }
+    var title = $('title');
+    if (title) title.focus();
+  }
+
+  function hideUndoToast() {
+    var toast = $('undo-toast');
+    var focusInside = toast.contains(document.activeElement);
+    var trigger = undoTrigger;
+    dismissUndoToast();
+    if (focusInside) refocusAfterUndo(trigger);
+  }
+
+  function showUndoToast(message, undoFn, trigger) {
+    undoAction = { message: message, undo: undoFn };
+    undoTrigger = trigger || null;
+    var toast = $('undo-toast');
+    /* Paint the live region before revealing it so the announcement is reliable. */
+    $('undo-msg').textContent = message;
+    toast.hidden = false;
+    /* Deliberately no focus() on #undo-btn: the role="status" region announces
+     * the change, and stealing focus would trap keyboard users on repeated
+     * actions. The button stays reachable in normal tab order. */
+    pauseUndoTimer();
+    resumeUndoTimer();
+  }
+
+  (function wireUndoTimerPause() {
+    var toast = $('undo-toast');
+    toast.addEventListener('pointerenter', function () { undoHover = true; pauseUndoTimer(); });
+    toast.addEventListener('pointerleave', function () { undoHover = false; resumeUndoTimer(); });
+    toast.addEventListener('focusin', pauseUndoTimer);
+    toast.addEventListener('focusout', function (e) {
+      if (e.relatedTarget && toast.contains(e.relatedTarget)) return;
+      resumeUndoTimer();
+    });
+  })();
+
+  function runUndo() {
+    var action = undoAction;
+    if (!action) return;
+    var trigger = undoTrigger;
+    var focusInside = $('undo-toast').contains(document.activeElement);
+    dismissUndoToast();
+    var result;
+    try {
+      result = action.undo();
+    } catch (e) {
+      setStatus('Could not undo that action.', true);
+      return;
+    }
+    /* A refused undo (e.g. the cap would be exceeded) reports its own status. */
+    if (result === false) return;
+    render(); /* also persists the restored list */
+    setStatus('Undone.');
+    if (focusInside) refocusAfterUndo(trigger);
+  }
+
+  $('undo-btn').addEventListener('click', runUndo);
+
+  document.addEventListener('keydown', function (e) {
+    if ($('undo-toast').hidden) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      hideUndoToast();
+      return;
+    }
+    /* Ctrl/Cmd+Z is a shortcut only outside form controls (and not the
+     * shifted redo), where the browser's own undo must keep working. */
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+      var t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' || t.isContentEditable)) return;
+      e.preventDefault();
+      runUndo();
+    }
+  });
+
+  /* Snapshot every control in the event form (plus attendee rows) so loading
+   * samples can be undone back to the visitor's work. */
+  function snapshotForm() {
+    var values = [];
+    var fields = $('event-form').querySelectorAll('input, select, textarea');
+    for (var i = 0; i < fields.length; i++) {
+      var el = fields[i];
+      if (!el.id || (el.closest && el.closest('#attendee-list'))) continue;
+      values.push({
+        id: el.id,
+        checked: el.type === 'checkbox' ? el.checked : null,
+        value: el.type === 'checkbox' ? null : el.value
+      });
+    }
+    var attendees = [];
+    var rows = document.querySelectorAll('#attendee-list .attendee-row');
+    for (var j = 0; j < rows.length; j++) {
+      var row = rows[j];
+      attendees.push({
+        name: row.querySelector('.att-name').value,
+        email: row.querySelector('.att-email').value,
+        role: row.querySelector('.att-role').value,
+        status: row.querySelector('.att-status').value,
+        rsvp: row.querySelector('.att-rsvp-input').checked
+      });
+    }
+    return {
+      values: values,
+      attendees: attendees,
+      /* Edit context travels with the draft so a samples undo can put the
+       * visitor back into the same Update session, not a silent Add. */
+      editingEvent: editingEvent,
+      editingKept: {
+        rrule: editingKept.rrule,
+        alarms: editingKept.alarms ? editingKept.alarms.map(copyPlain) : null
+      }
+    };
+  }
+
+  function restoreForm(snap) {
+    if (!snap) return;
+    clearAllFieldErrors();
+    var box = $('attendee-list');
+    box.textContent = '';
+    snap.attendees.forEach(addAttendeeRow);
+    snap.values.forEach(function (rec) {
+      var el = $(rec.id);
+      if (!el) return;
+      if (rec.checked !== null) el.checked = rec.checked;
+      else el.value = rec.value;
+    });
+    /* Visibility only: the snapshot's date values must survive byte-for-byte. */
+    syncAllDayVisibility();
+    syncRecurUI();
+    syncReminderUI();
+    updateKeptHint();
+    rememberStartInstant();
+  }
+
+  /* Re-enter the edit session a snapshot captured. Targets the same event by
+   * reference; if it is gone (removed while the toast was pending) the form is
+   * left cleanly in Add mode instead of updating the wrong event. */
+  function restoreEditState(snap) {
+    var ev = snap && snap.editingEvent;
+    if (!ev || cal.events.indexOf(ev) === -1) { exitEditMode(); return; }
+    editingEvent = ev;
+    editingKept = snap.editingKept || { rrule: null, alarms: null };
+    $('form-heading').textContent = 'Edit event';
+    $('add-btn').textContent = 'Update event';
+    $('cancel-edit-btn').hidden = false;
+    updateKeptHint();
+  }
+
   /* ---------- actions ---------- */
 
   $('event-form').addEventListener('submit', function (e) {
     e.preventDefault();
     try {
-      var opts = readForm();
+      var result = readForm();
+      if (result.errors) { showFormErrors(result.errors); return; }
+      var opts = result.opts;
+      clearAllFieldErrors();
 
       if (editingEvent !== null) {
         var index = cal.events.indexOf(editingEvent);
@@ -959,6 +1357,7 @@
             return;
           }
           updated = cal.addEvent(opts);
+          dismissUndoToast();
           exitEditMode();
           render();
           setStatus('The event being edited was removed — added as a new event instead.');
@@ -972,6 +1371,7 @@
             opts.alarms = editingKept.alarms.map(copyPlain);
           }
           updated = cal.updateEvent(index, opts);
+          dismissUndoToast();
           exitEditMode();
           render();
           setStatus('Updated "' + updated.options.title + '".');
@@ -986,6 +1386,7 @@
       }
 
       var ev = cal.addEvent(opts);
+      dismissUndoToast();
       /* quick-entry flow: roll the form forward to the next slot */
       if (!$('all-day').checked && endDateEl.value && endTimeEl.value) {
         startDateEl.value = endDateEl.value;
@@ -999,7 +1400,9 @@
       render();
       setStatus('Added "' + ev.options.title + '" to the calendar.');
     } catch (err) {
-      setStatus(err.message, true);
+      /* A genuine library rejection is not a user-input problem we could have
+       * predicted; map it onto the responsible field when identifiable. */
+      if (!showFieldErrorFromLib(err)) setStatus(err.message, true);
     }
   });
 
@@ -1045,31 +1448,30 @@
   });
 
   $('clear-btn').addEventListener('click', function () {
-    if (cal.events.length && !window.confirm('Remove all ' + cal.events.length + ' event(s) from the list?')) return;
+    if (!cal.events.length) {
+      cal.clear();
+      render();
+      setStatus('Cleared.');
+      return;
+    }
+    var snapshot = cal.events.slice();
     cal.clear();
     render();
     setStatus('Cleared.');
+    showUndoToast(
+      snapshot.length === 1 ? 'Cleared 1 event.' : 'Cleared ' + snapshot.length + ' events.',
+      function () { cal.events = snapshot; },
+      $('clear-btn')
+    );
   });
 
-  /* True when the visitor has put something into the form. The date/time inputs
-   * are pre-filled on load, so they alone do not count. */
-  function formHasUserContent() {
-    if ($('title').value.trim() || $('description').value.trim() ||
-        $('location').value.trim() || $('categories').value.trim() ||
-        $('url').value.trim() ||
-        $('organizer-name').value.trim() || $('organizer-email').value.trim()) return true;
-    if (document.querySelector('#attendee-list .attendee-row')) return true;
-    if ($('recur-freq').value !== 'NONE') return true;
-    if ($('reminder-toggle').value === 'on') return true;
-    if ($('all-day').checked) return true;
-    return false;
-  }
-
   $('sample-btn').addEventListener('click', function () {
-    var changes = [];
-    if (cal.events.length) changes.push('replace the ' + cal.events.length + ' event(s) in the list');
-    if (formHasUserContent()) changes.push('overwrite the form fields');
-    if (changes.length && !window.confirm('Load sample events? This will ' + changes.join(' and ') + '.')) return;
+    var previousEvents = cal.events.slice();
+    var previousForm = snapshotForm();
+    /* Loading samples replaces the form, so leave edit mode now: keeping a
+     * stale Update target would silently turn a later Update into an Add.
+     * The snapshot above already carries the edit context for Undo. */
+    exitEditMode();
 
     cal.clear();
 
@@ -1120,6 +1522,11 @@
     /* Show the richest sample in the form so the .ics ↔ fields mapping is visible. */
     populateForm(designReview);
     setStatus('Loaded 3 sample events. The form shows "Design review" so you can see how it maps to the fields.');
+    showUndoToast('Loaded 3 sample events.', function () {
+      cal.events = previousEvents;
+      restoreForm(previousForm);
+      restoreEditState(previousForm);
+    }, $('sample-btn'));
   });
 
   /* ---------- importing .ics ---------- */
@@ -1207,6 +1614,10 @@
     });
 
     if (added) {
+      /* Importing mutated the list, so it supersedes any pending undo. Dismiss
+       * here (not before the loop) so an import that adds nothing leaves a
+       * still-valid undo intact. */
+      dismissUndoToast();
       render();
       /* Collapse the panel so the (now populated) form is pulled into view. */
       $('import-box').open = false;
