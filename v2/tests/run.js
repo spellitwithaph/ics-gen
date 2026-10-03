@@ -164,15 +164,31 @@ var files = fs
 
 files.forEach(function (name) {
   var full = path.join(dir, name);
-  currentFile = path.relative(repoRoot, full);
+  var fileName = path.relative(repoRoot, full);
+  currentFile = fileName;
+  var registeredBefore = tests.length;
   try {
     require(full);
   } catch (err) {
     /* A file that throws while loading is reported as a single failed test. */
     tests.push({
-      file: currentFile,
+      file: fileName,
       name: '(module load)',
       fn: function () { throw err; }
+    });
+    return;
+  }
+  /*
+   * A discovered file that registers no tests is a silent skip: report it as a
+   * failure so it cannot pass unnoticed.
+   */
+  if (tests.length === registeredBefore) {
+    tests.push({
+      file: fileName,
+      name: '(no tests registered)',
+      fn: function () {
+        throw new Error('no tests were registered by ' + fileName);
+      }
     });
   }
 });
@@ -182,6 +198,29 @@ files.forEach(function (name) {
 function oneLine(err) {
   var text = String((err && err.message) || err);
   return text.replace(/\s*\r?\n\s*/g, ' | ');
+}
+
+var TEST_TIMEOUT_MS = 5000;
+
+/*
+ * Run one test with a hard timeout. The timer is intentionally left referenced:
+ * it keeps the event loop alive while a test is pending, so a test returning a
+ * never-settling promise cannot let Node exit with no summary and silently skip
+ * the remaining tests. The timer is cleared on every outcome, so the suite
+ * still exits once it finishes.
+ */
+function runTest(fn, label) {
+  return new Promise(function (resolve, reject) {
+    var timer = setTimeout(function () {
+      reject(new Error('test timed out after ' + TEST_TIMEOUT_MS + 'ms: ' + label));
+    }, TEST_TIMEOUT_MS);
+    Promise.resolve()
+      .then(fn)
+      .then(
+        function (value) { clearTimeout(timer); resolve(value); },
+        function (err) { clearTimeout(timer); reject(err); }
+      );
+  });
 }
 
 (async function main() {
@@ -197,7 +236,7 @@ function oneLine(err) {
   for (var i = 0; i < tests.length; i++) {
     var t = tests[i];
     try {
-      await t.fn();
+      await runTest(t.fn, t.file + ' :: ' + t.name);
       passed++;
       if (verbose) console.log('ok   ' + t.file + ' :: ' + t.name);
     } catch (err) {
