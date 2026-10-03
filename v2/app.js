@@ -729,7 +729,7 @@
         edit.className = 'btn ghost';
         edit.textContent = 'Edit';
         edit.setAttribute('aria-label', 'Edit ' + ev.options.title);
-        edit.disabled = i === editingIndex;
+        edit.disabled = ev === editingEvent;
         edit.addEventListener('click', function () { startEditing(i); });
 
         var dup = document.createElement('button');
@@ -802,15 +802,16 @@
     return clone;
   }
 
-  /* Index of the event currently being edited, or null when the form adds a
-   * new event. Kept separate from the form because importing an .ics file can
-   * repopulate the form without leaving edit mode. */
-  var editingIndex = null;
+  /* The VEvent currently being edited, or null when the form adds a new event.
+   * Tracking the reference (not an index) keeps the update pointed at the same
+   * event even if the list is reordered or an item is removed while the form is
+   * open. */
+  var editingEvent = null;
 
   function startEditing(index) {
     var ev = cal.events[index];
     if (!ev) return;
-    editingIndex = index;
+    editingEvent = ev;
     populateForm(ev.options);
     $('form-heading').textContent = 'Edit event';
     $('add-btn').textContent = 'Update event';
@@ -820,7 +821,7 @@
   }
 
   function exitEditMode() {
-    editingIndex = null;
+    editingEvent = null;
     $('form-heading').textContent = 'New event';
     $('add-btn').textContent = 'Add event';
     $('cancel-edit-btn').hidden = true;
@@ -837,6 +838,7 @@
 
   $('cancel-edit-btn').addEventListener('click', function () {
     exitEditMode(); /* the form keeps its content */
+    render(); /* re-enable the Edit button on the item we were editing */
     $('title').focus();
   });
 
@@ -847,21 +849,21 @@
     try {
       var opts = readForm();
 
-      if (editingIndex !== null) {
-        var index = editingIndex;
+      if (editingEvent !== null) {
+        var index = cal.events.indexOf(editingEvent);
         var updated;
-        if (cal.events[index]) {
-          updated = cal.updateEvent(index, opts);
-          exitEditMode();
-          render();
-          setStatus('Updated "' + updated.options.title + '".');
-        } else {
+        if (index === -1) {
           /* The edited event was removed while the form was open — keep the
            * visitor's work by adding it as a new event instead. */
           updated = cal.addEvent(opts);
           exitEditMode();
           render();
-          setStatus('The event you were editing was removed — added "' + updated.options.title + '" instead.');
+          setStatus('The event being edited was removed — added as a new event instead.');
+        } else {
+          updated = cal.updateEvent(index, opts);
+          exitEditMode();
+          render();
+          setStatus('Updated "' + updated.options.title + '".');
         }
         focusEventTitle(cal.events.indexOf(updated));
         return;
@@ -1091,6 +1093,11 @@
       /* Collapse the panel so the (now populated) form is pulled into view. */
       $('import-box').open = false;
       if (result.events.length === 1) {
+        /* A single-event import takes over the form, so leave edit mode first:
+         * otherwise a later Update would overwrite the previously edited event
+         * with the imported data. render() re-enables its Edit button. */
+        exitEditMode();
+        render();
         populateForm(result.events[0]);
         $('title').focus();
       }
