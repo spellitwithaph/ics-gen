@@ -613,7 +613,10 @@
           ? new Date(Date.UTC(ev.end.year, ev.end.month - 1, ev.end.day))
           : ev.end;
         if (ep.getTime() - sp.getTime() > 86400000) {
-          bits.push('through ' + ep.toLocaleDateString(undefined, {
+          /* DTEND on an all-day event is exclusive — name the last covered
+           * day, not the day after the event ends. */
+          var lastCovered = new Date(ep.getTime() - 86400000);
+          bits.push('through ' + lastCovered.toLocaleDateString(undefined, {
             weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC'
           }));
         }
