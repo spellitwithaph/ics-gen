@@ -71,7 +71,7 @@ test('TEXT values are escaped in generated output', function () {
 
 test('generated calendars use CRLF line endings and end with CRLF', function () {
   var text = calendarWith({ title: 'CRLF', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 }).toString();
-  assert.ok(text.charAt(text.length - CRLF.length) === '\r', 'output must end with CRLF');
+  assert.eq(text.slice(-CRLF.length), CRLF, 'output must end with CRLF');
   assert.ok(!/[^\r]\n/.test(text), 'every LF must be preceded by CR');
   assert.includes(text.split(CRLF), 'BEGIN:VCALENDAR');
 });
@@ -105,6 +105,25 @@ test('a long calendar summary never emits a line over 75 octets', function () {
   text.split(CRLF).forEach(function (line) {
     assert.ok(Buffer.byteLength(line, 'utf8') <= 75, 'line exceeds 75 octets: ' + line);
   });
+});
+
+test('a long multi-byte description folds within 75 octets and unfolds exactly', function () {
+  var original = '会議の議事録 😀 ' + '予定と議題'.repeat(12) + ' 🚀🎉';
+  var text = makeEvent({
+    title: 'Unicode fold',
+    start: new Date('2026-01-05T10:00:00Z'),
+    durationMinutes: 30,
+    description: original
+  }).toString();
+
+  text.split(CRLF).forEach(function (line) {
+    assert.ok(Buffer.byteLength(line, 'utf8') <= 75, 'line exceeds 75 octets: ' + line);
+  });
+
+  var descriptionLine = unfold(text)
+    .split('\n')
+    .filter(function (line) { return line.indexOf('DESCRIPTION:') === 0; })[0];
+  assert.eq(descriptionLine, 'DESCRIPTION:' + original);
 });
 
 /* ---------- timestamp formatting ---------- */
@@ -199,6 +218,34 @@ test('timezone events emit DTSTART;TZID= with wall-clock time', function () {
     }).toString()
   );
   assert.includes(text, 'DTSTART;TZID=America/New_York:20260115T120000');
+});
+
+test('a DST spring-forward day keeps the TZID wall-clock time in emitted ICS', function () {
+  /* America/New_York springs forward on 2026-03-08 (02:00 EST → 03:00 EDT). */
+  var before = ICS.zonedTimeToDate(2026, 3, 8, 1, 30, 'America/New_York');
+  var after = ICS.zonedTimeToDate(2026, 3, 8, 3, 30, 'America/New_York');
+  assert.eq(before.toISOString(), '2026-03-08T06:30:00.000Z');
+  assert.eq(after.toISOString(), '2026-03-08T07:30:00.000Z');
+
+  var text = unfold(
+    makeEvent({
+      title: 'Spring forward',
+      start: after,
+      durationMinutes: 60,
+      timezone: 'America/New_York'
+    }).toString()
+  );
+  assert.includes(text, 'DTSTART;TZID=America/New_York:20260308T033000');
+  assert.includes(text, 'DTEND;TZID=America/New_York:20260308T043000');
+
+  var earlier = unfold(
+    makeEvent({
+      title: 'Before the jump',
+      start: before,
+      timezone: 'America/New_York'
+    }).toString()
+  );
+  assert.includes(earlier, 'DTSTART;TZID=America/New_York:20260308T013000');
 });
 
 test('timezone values containing control characters are rejected', function () {
