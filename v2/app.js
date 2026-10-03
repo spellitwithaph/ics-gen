@@ -219,8 +219,12 @@
   }
 
   $('all-day').addEventListener('change', syncAllDayUI);
-  $('recur-freq').addEventListener('change', syncRecurUI);
-  $('reminder-toggle').addEventListener('change', syncReminderUI);
+  $('recur-freq').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
+  $('reminder-toggle').addEventListener('change', function () { syncReminderUI(); updateKeptHint(); });
+  /* The "kept as-is" hint names only what the current controls will actually
+   * preserve, so refresh it whenever one of them changes. */
+  $('reminder-value').addEventListener('change', updateKeptHint);
+  $('reminder-unit').addEventListener('change', updateKeptHint);
 
   /* Keep the end after the start when the start moves past it: shift the end by
    * the duration entered before the change (min 1 hour). The previous start
@@ -458,16 +462,37 @@
     return null;
   }
 
+  /* The exact trigger string the reminder form writes for { value, unit }:
+   * '-P2D', '-PT3H', '-PT10M' (see the alarm branch in readForm). */
+  function triggerFromParts(parts) {
+    if (parts.unit === 'days') return '-P' + parts.value + 'D';
+    if (parts.unit === 'hours') return '-PT' + parts.value + 'H';
+    return '-PT' + parts.value + 'M';
+  }
+
+  /* True only when `trigger` is exactly what the form would write back for
+   * `parts`, so a no-change Update reproduces it byte-for-byte. Compound
+   * durations (-PT1H30M, -P1DT12H), leading zeros and absolute/non-trigger
+   * strings all fail. Numeric minute triggers (-10) equal the '-PT10M' the
+   * form writes, so they count as representable when integral. */
+  function triggerRoundTrips(trigger, parts) {
+    if (!parts || !(parts.value >= 1)) return false;
+    if (typeof trigger === 'number') return Number.isInteger(trigger) && trigger < 0;
+    return String(trigger == null ? '' : trigger).trim() === triggerFromParts(parts);
+  }
+
   /* The single alarm the reminder control can represent, as { value, unit },
    * or null when the array is not fully representable (more than one alarm, a
-   * non-DISPLAY action, a description, or a trigger the control cannot show). */
+   * non-DISPLAY action, a description, or a trigger the control cannot show
+   * back exactly). */
   function simpleAlarm(alarms) {
     if (!Array.isArray(alarms) || alarms.length !== 1) return null;
     var a = alarms[0];
     if (!a) return null;
     var action = a.action ? String(a.action).toUpperCase() : 'DISPLAY';
     if (action !== 'DISPLAY' || a.description) return null;
-    return parseTrigger(a.trigger);
+    var parts = parseTrigger(a.trigger);
+    return triggerRoundTrips(a.trigger, parts) ? parts : null;
   }
 
   var ATTENDEE_ROLES = [
@@ -856,8 +881,26 @@
     return kept;
   }
 
+  /* The parts of the original the simple form will keep as-is given what its
+   * controls currently show (mirrors the carry-through logic in submit). */
+  function keptParts() {
+    var parts = [];
+    if (editingEvent && editingKept.rrule && $('recur-freq').value === 'NONE') {
+      parts.push('advanced recurrence');
+    }
+    if (editingEvent && editingKept.alarms && $('reminder-toggle').value === 'off') {
+      parts.push('extra reminders');
+    }
+    return parts;
+  }
+
   function updateKeptHint() {
-    $('edit-kept-hint').hidden = !(editingEvent && (editingKept.rrule || editingKept.alarms));
+    var el = $('edit-kept-hint');
+    var parts = keptParts();
+    if (!parts.length) { el.hidden = true; return; }
+    el.textContent = "Parts of this event (" + parts.join(' and ') +
+      ") can't be edited in this simple form and will be kept as-is.";
+    el.hidden = false;
   }
 
   function startEditing(index) {
@@ -1271,10 +1314,21 @@
   var MAX_RESTORED_EVENTS = MAX_EVENTS;
   /* skipNextSave is set when a restore is refused (foreign/newer payload) so
    * the very next automatic save does not overwrite data this version does not
-   * understand. saveFailed reports a broken localStorage exactly once. */
+   * understand. */
   var skipNextSave = false;
-  var saveFailed = false;
   var SAVE_BLOCKED_MSG = "This browser blocks saving — events won't survive a reload.";
+
+  /* The save warning has its own persistent element (not #status-msg) so a
+   * later action status can never hide a browser that refuses to store. */
+  function showSaveWarning() {
+    var el = $('save-warning');
+    el.textContent = SAVE_BLOCKED_MSG;
+    el.hidden = false;
+  }
+
+  function hideSaveWarning() {
+    $('save-warning').hidden = true;
+  }
 
   function serializeDateValue(v) {
     if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
@@ -1318,12 +1372,10 @@
           return { options: options, uid: ev.uid };
         })
       }));
+      hideSaveWarning();
     } catch (e) {
-      /* quota/security error — surface it once instead of failing silently */
-      if (!saveFailed) {
-        saveFailed = true;
-        setStatus(SAVE_BLOCKED_MSG);
-      }
+      /* quota/security error — keep the warning visible until a save works */
+      showSaveWarning();
     }
   }
 
@@ -1402,8 +1454,6 @@
   } else if (restored) {
     setStatus('Restored ' + restored + ' saved event(s).');
   }
-  /* A failed save is more urgent than the restore notice, so it wins here. */
-  if (saveFailed) setStatus(SAVE_BLOCKED_MSG);
   /* Start keyboard visitors in the first field (no scroll-jumping). */
   $('title').focus();
 })();
