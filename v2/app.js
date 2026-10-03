@@ -15,6 +15,11 @@
 
   var cal = new IcsGenerator.Calendar({ name: 'My Events' });
 
+  /* Hard ceiling on the list. Every growth point (form submit, duplicate,
+   * import) checks it and restore applies it, so the cap can never be evaded
+   * silently. */
+  var MAX_EVENTS = 200;
+
   /* Time-zone math lives in ics.js so the importer can share it. */
   var zoneParts = IcsGenerator.zoneParts;
   var zonedTimeToDate = IcsGenerator.zonedTimeToDate;
@@ -39,6 +44,10 @@
   function parseTimeInput(v) {
     var p = v.split(':').map(Number);
     return { hour: p[0], minute: p[1] };
+  }
+  function isDateParts(v) {
+    return v && typeof v === 'object' &&
+      typeof v.year === 'number' && typeof v.month === 'number' && typeof v.day === 'number';
   }
   function slugify(s) {
     return (s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'calendar');
@@ -210,8 +219,12 @@
   }
 
   $('all-day').addEventListener('change', syncAllDayUI);
-  $('recur-freq').addEventListener('change', syncRecurUI);
-  $('reminder-toggle').addEventListener('change', syncReminderUI);
+  $('recur-freq').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
+  $('reminder-toggle').addEventListener('change', function () { syncReminderUI(); updateKeptHint(); });
+  /* The "kept as-is" hint names only what the current controls will actually
+   * preserve, so refresh it whenever one of them changes. */
+  $('reminder-value').addEventListener('change', updateKeptHint);
+  $('reminder-unit').addEventListener('change', updateKeptHint);
 
   /* Keep the end after the start when the start moves past it: shift the end by
    * the duration entered before the change (min 1 hour). The previous start
@@ -449,6 +462,39 @@
     return null;
   }
 
+  /* The exact trigger string the reminder form writes for { value, unit }:
+   * '-P2D', '-PT3H', '-PT10M' (see the alarm branch in readForm). */
+  function triggerFromParts(parts) {
+    if (parts.unit === 'days') return '-P' + parts.value + 'D';
+    if (parts.unit === 'hours') return '-PT' + parts.value + 'H';
+    return '-PT' + parts.value + 'M';
+  }
+
+  /* True only when `trigger` is exactly what the form would write back for
+   * `parts`, so a no-change Update reproduces it byte-for-byte. Compound
+   * durations (-PT1H30M, -P1DT12H), leading zeros and absolute/non-trigger
+   * strings all fail. Numeric minute triggers (-10) equal the '-PT10M' the
+   * form writes, so they count as representable when integral. */
+  function triggerRoundTrips(trigger, parts) {
+    if (!parts || !(parts.value >= 1)) return false;
+    if (typeof trigger === 'number') return Number.isInteger(trigger) && trigger < 0;
+    return String(trigger == null ? '' : trigger).trim() === triggerFromParts(parts);
+  }
+
+  /* The single alarm the reminder control can represent, as { value, unit },
+   * or null when the array is not fully representable (more than one alarm, a
+   * non-DISPLAY action, a description, or a trigger the control cannot show
+   * back exactly). */
+  function simpleAlarm(alarms) {
+    if (!Array.isArray(alarms) || alarms.length !== 1) return null;
+    var a = alarms[0];
+    if (!a) return null;
+    var action = a.action ? String(a.action).toUpperCase() : 'DISPLAY';
+    if (action !== 'DISPLAY' || a.description) return null;
+    var parts = parseTrigger(a.trigger);
+    return triggerRoundTrips(a.trigger, parts) ? parts : null;
+  }
+
   var ATTENDEE_ROLES = [
     ['REQ-PARTICIPANT', 'Required'],
     ['OPT-PARTICIPANT', 'Optional'],
@@ -562,7 +608,14 @@
 
     if (allDay) {
       setDateInput(startDateEl, ev.start);
-      if (ev.end) setDateInput(endDateEl, ev.end);
+      if (ev.end) {
+        setDateInput(endDateEl, ev.end);
+      } else if (isDateParts(ev.start)) {
+        /* No explicit end: mirror computeEnd's exclusive start+1day default so
+         * a no-change update reproduces the same DTEND instead of keeping a
+         * stale end date that happened to be in the input. */
+        endDateEl.value = addDays(isoFromParts(ev.start), 1);
+      }
     } else {
       var zone = zoneForForm(ev.timezone);
       var sp = zoneParts(ev.start, zone);
@@ -584,7 +637,7 @@
     $('recur-until').value = rule ? rule.until : '';
     syncRecurUI();
 
-    var alarm = ev.alarms && ev.alarms[0] ? parseTrigger(ev.alarms[0].trigger) : null;
+    var alarm = simpleAlarm(ev.alarms);
     $('reminder-toggle').value = alarm ? 'on' : 'off';
     if (alarm) {
       $('reminder-value').value = alarm.value;
@@ -672,6 +725,28 @@
     return bits.join(' · ');
   }
 
+  /* Sort key for the list view: an all-day event sorts by its calendar day
+   * (UTC midnight), a timed event by its instant. */
+  function eventSortTime(ev) {
+    if (isDateParts(ev.start)) return Date.UTC(ev.start.year, ev.start.month - 1, ev.start.day);
+    return ev.start.getTime();
+  }
+
+  /* The list is shown in start order, but every action must still target the
+   * event's real index in cal.events (and the preview keeps insertion order),
+   * so the sorted view carries the original index alongside each event. */
+  function sortedEventEntries() {
+    return cal.events
+      .map(function (ev, index) { return { realIndex: index, ev: ev }; })
+      .sort(function (a, b) {
+        var byStart = eventSortTime(a.ev) - eventSortTime(b.ev);
+        if (byStart) return byStart;
+        var byTitle = String(a.ev.options.title).localeCompare(String(b.ev.options.title));
+        if (byTitle) return byTitle;
+        return a.realIndex - b.realIndex;
+      });
+  }
+
   function render() {
     var list = $('event-list');
     list.textContent = '';
@@ -682,17 +757,44 @@
       li.textContent = 'No events yet — add your first event with the form, or load the samples.';
       list.appendChild(li);
     } else {
-      cal.events.forEach(function (ev, i) {
+      sortedEventEntries().forEach(function (entry) {
+        var ev = entry.ev;
+        var i = entry.realIndex;
         var li = document.createElement('li');
+        li.setAttribute('data-index', i);
 
         var info = document.createElement('div');
         info.className = 'event-info';
         var strong = document.createElement('strong');
         strong.textContent = ev.options.title;
+        strong.tabIndex = -1; /* programmatic focus target after an update */
         var small = document.createElement('small');
         small.textContent = describeEvent(ev);
         info.appendChild(strong);
         info.appendChild(small);
+
+        var edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'btn ghost';
+        edit.textContent = 'Edit';
+        edit.setAttribute('aria-label', 'Edit ' + ev.options.title);
+        edit.disabled = ev === editingEvent;
+        edit.addEventListener('click', function () { startEditing(i); });
+
+        var dup = document.createElement('button');
+        dup.type = 'button';
+        dup.className = 'btn ghost';
+        dup.textContent = 'Duplicate';
+        dup.setAttribute('aria-label', 'Duplicate ' + ev.options.title);
+        dup.addEventListener('click', function () {
+          if (cal.events.length >= MAX_EVENTS) {
+            setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
+            return;
+          }
+          cal.addEvent(cloneEventOptions(ev.options));
+          render();
+          setStatus('Duplicated "' + ev.options.title + '".');
+        });
 
         var del = document.createElement('button');
         del.type = 'button';
@@ -704,6 +806,8 @@
         });
 
         li.appendChild(info);
+        li.appendChild(edit);
+        li.appendChild(dup);
         li.appendChild(del);
         list.appendChild(li);
       });
@@ -717,14 +821,171 @@
     $('copy-btn').disabled = !has;
     /* The preview starts expanded (see the `open` attribute in index.html) and
      * never auto-collapses; the visitor can still toggle it. */
+
+    saveEvents();
   }
+
+  /* ---------- edit mode ---------- */
+  /* Deep-enough copy of an event's options for duplication: a fresh title with
+   * a "(copy)" suffix, no uid, fresh categories/attendees/alarms arrays (with
+   * copied object elements), and rebuilt Date / { year, month, day } values so
+   * editing the copy can never mutate the original. */
+  /* Never let stored JSON rewire an object's prototype. */
+  function copyPlain(o) {
+    var out = {};
+    Object.keys(o).forEach(function (k) {
+      if (k === '__proto__' || k === 'constructor') return;
+      out[k] = o[k];
+    });
+    return out;
+  }
+
+  function copyDateValue(v) {
+    if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
+    if (v instanceof Date) return new Date(v.getTime());
+    return v;
+  }
+
+  function cloneEventOptions(o) {
+    var clone = copyPlain(o);
+    delete clone.uid;
+    clone.title = (o.title || '') + ' (copy)';
+    if (o.start != null) clone.start = copyDateValue(o.start);
+    if (o.end != null) clone.end = copyDateValue(o.end);
+    if (Array.isArray(o.categories)) clone.categories = o.categories.slice();
+    if (Array.isArray(o.attendees)) clone.attendees = o.attendees.map(copyPlain);
+    if (Array.isArray(o.alarms)) clone.alarms = o.alarms.map(copyPlain);
+    if (o.organizer) clone.organizer = copyPlain(o.organizer);
+    return clone;
+  }
+
+  /* The VEvent currently being edited, or null when the form adds a new event.
+   * Tracking the reference (not an index) keeps the update pointed at the same
+   * event even if the list is reordered or an item is removed while the form is
+   * open. `editingKept` remembers the parts of the original the simple form
+   * cannot represent so a no-change update does not destroy them. */
+  var editingEvent = null;
+  var editingKept = { rrule: null, alarms: null };
+
+  /* The parts of `ev` the form cannot represent and must therefore be carried
+   * through an update when the visitor leaves that control untouched. */
+  function keptFromEvent(ev) {
+    var o = ev.options;
+    var kept = { rrule: null, alarms: null };
+    if (o.rrule && !simpleRule(o.rrule, ev.allDay, timezoneEl.value)) {
+      kept.rrule = o.rrule;
+    }
+    if (Array.isArray(o.alarms) && o.alarms.length && !simpleAlarm(o.alarms)) {
+      kept.alarms = o.alarms.map(copyPlain);
+    }
+    return kept;
+  }
+
+  /* The parts of the original the simple form will keep as-is given what its
+   * controls currently show (mirrors the carry-through logic in submit). */
+  function keptParts() {
+    var parts = [];
+    if (editingEvent && editingKept.rrule && $('recur-freq').value === 'NONE') {
+      parts.push('advanced recurrence');
+    }
+    if (editingEvent && editingKept.alarms && $('reminder-toggle').value === 'off') {
+      parts.push('extra reminders');
+    }
+    return parts;
+  }
+
+  function updateKeptHint() {
+    var el = $('edit-kept-hint');
+    var parts = keptParts();
+    if (!parts.length) { el.hidden = true; return; }
+    el.textContent = "Parts of this event (" + parts.join(' and ') +
+      ") can't be edited in this simple form and will be kept as-is.";
+    el.hidden = false;
+  }
+
+  function startEditing(index) {
+    var ev = cal.events[index];
+    if (!ev) return;
+    editingEvent = ev;
+    populateForm(ev.options);
+    editingKept = keptFromEvent(ev);
+    updateKeptHint();
+    $('form-heading').textContent = 'Edit event';
+    $('add-btn').textContent = 'Update event';
+    $('cancel-edit-btn').hidden = false;
+    render(); /* reflect the disabled Edit button on this item */
+    $('title').focus();
+  }
+
+  function exitEditMode() {
+    editingEvent = null;
+    editingKept = { rrule: null, alarms: null };
+    updateKeptHint();
+    $('form-heading').textContent = 'New event';
+    $('add-btn').textContent = 'Add event';
+    $('cancel-edit-btn').hidden = true;
+  }
+
+  /* Face the event the visitor just changed: focus its title in the list, or
+   * the status message when the item cannot be found. */
+  function focusEventTitle(index) {
+    var li = $('event-list').querySelector('li[data-index="' + index + '"]');
+    var strong = li && li.querySelector('strong');
+    if (strong) { strong.focus(); return; }
+    $('status-msg').focus();
+  }
+
+  $('cancel-edit-btn').addEventListener('click', function () {
+    exitEditMode(); /* the form keeps its content */
+    render(); /* re-enable the Edit button on the item we were editing */
+    $('title').focus();
+  });
 
   /* ---------- actions ---------- */
 
   $('event-form').addEventListener('submit', function (e) {
     e.preventDefault();
     try {
-      var ev = cal.addEvent(readForm());
+      var opts = readForm();
+
+      if (editingEvent !== null) {
+        var index = cal.events.indexOf(editingEvent);
+        var updated;
+        if (index === -1) {
+          /* The edited event was removed while the form was open — keep the
+           * visitor's work by adding it as a new event instead. */
+          if (cal.events.length >= MAX_EVENTS) {
+            setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
+            return;
+          }
+          updated = cal.addEvent(opts);
+          exitEditMode();
+          render();
+          setStatus('The event being edited was removed — added as a new event instead.');
+        } else {
+          /* Carry through the parts the simple form cannot represent unless the
+           * visitor actively chose a new value for that control. */
+          if (opts.rrule == null && editingKept.rrule && $('recur-freq').value === 'NONE') {
+            opts.rrule = editingKept.rrule;
+          }
+          if (opts.alarms == null && editingKept.alarms && $('reminder-toggle').value === 'off') {
+            opts.alarms = editingKept.alarms.map(copyPlain);
+          }
+          updated = cal.updateEvent(index, opts);
+          exitEditMode();
+          render();
+          setStatus('Updated "' + updated.options.title + '".');
+        }
+        focusEventTitle(cal.events.indexOf(updated));
+        return;
+      }
+
+      if (cal.events.length >= MAX_EVENTS) {
+        setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
+        return;
+      }
+
+      var ev = cal.addEvent(opts);
       /* quick-entry flow: roll the form forward to the next slot */
       if (!$('all-day').checked && endDateEl.value && endTimeEl.value) {
         startDateEl.value = endDateEl.value;
@@ -934,7 +1195,9 @@
     }
 
     var added = 0;
+    var hitCap = false;
     result.events.forEach(function (ev) {
+      if (cal.events.length >= MAX_EVENTS) { hitCap = true; return; }
       /* Skip an event only if ics.js rejects it outright; the count below
        * already tells the visitor when fewer events landed than were found. */
       try {
@@ -948,6 +1211,11 @@
       /* Collapse the panel so the (now populated) form is pulled into view. */
       $('import-box').open = false;
       if (result.events.length === 1) {
+        /* A single-event import takes over the form, so leave edit mode first:
+         * otherwise a later Update would overwrite the previously edited event
+         * with the imported data. render() re-enables its Edit button. */
+        exitEditMode();
+        render();
         populateForm(result.events[0]);
         $('title').focus();
       }
@@ -957,7 +1225,8 @@
       ' event' + (result.events.length === 1 ? '' : 's');
     if (sourceLabel) msg += ' from ' + sourceLabel;
     setImportStatus(msg + '.', added === 0);
-    if (added) setStatus('Imported ' + added + ' event' + (added === 1 ? '' : 's') + '.');
+    if (hitCap) setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
+    else if (added) setStatus('Imported ' + added + ' event' + (added === 1 ? '' : 's') + '.');
   }
 
   function readImportFile(file) {
@@ -1031,6 +1300,135 @@
     e.preventDefault();
   });
 
+  /* ---------- persistence ---------- */
+
+  /* Events survive a reload in localStorage. Dates are stored as a
+   * self-describing { __type: 'date', iso } wrapper; { year, month, day }
+   * objects are already JSON-safe and are kept as-is. Every access is wrapped
+   * because localStorage throws on some schemes (file:// in some browsers,
+   * private mode, disabled storage) and a failure must never break the page. */
+  var STORAGE_KEY = 'ics-gen-v2';
+  /* 2 wraps each record as { options, uid }; 1 was the flat options array that
+   * never shipped past this branch and is still accepted on restore. */
+  var STORAGE_VERSION = 2;
+  var MAX_RESTORED_EVENTS = MAX_EVENTS;
+  /* skipNextSave is set when a restore is refused (foreign/newer payload) so
+   * the very next automatic save does not overwrite data this version does not
+   * understand. */
+  var skipNextSave = false;
+  var SAVE_BLOCKED_MSG = "This browser blocks saving — events won't survive a reload.";
+
+  /* The save warning has its own persistent element (not #status-msg) so a
+   * later action status can never hide a browser that refuses to store. */
+  function showSaveWarning() {
+    var el = $('save-warning');
+    el.textContent = SAVE_BLOCKED_MSG;
+    el.hidden = false;
+  }
+
+  function hideSaveWarning() {
+    $('save-warning').hidden = true;
+  }
+
+  function serializeDateValue(v) {
+    if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
+    if (v instanceof Date) return { __type: 'date', iso: v.toISOString() };
+    return v;
+  }
+
+  function serializeOptions(o) {
+    var out = copyPlain(o);
+    if (o.start != null) out.start = serializeDateValue(o.start);
+    if (o.end != null) out.end = serializeDateValue(o.end);
+    return out;
+  }
+
+  function deserializeDateValue(v) {
+    if (v && v.__type === 'date' && typeof v.iso === 'string') {
+      var d = new Date(v.iso);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
+    return v;
+  }
+
+  function deserializeOptions(o) {
+    var out = copyPlain(o);
+    if (o.start != null) out.start = deserializeDateValue(o.start);
+    if (o.end != null) out.end = deserializeDateValue(o.end);
+    return out;
+  }
+
+  function saveEvents() {
+    if (skipNextSave) { skipNextSave = false; return; }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: STORAGE_VERSION,
+        /* Each record carries its effective uid alongside the options so a
+         * reload reproduces the identical UID line instead of a new random one. */
+        events: cal.events.map(function (ev) {
+          var options = serializeOptions(ev.options);
+          delete options.uid;
+          return { options: options, uid: ev.uid };
+        })
+      }));
+      hideSaveWarning();
+    } catch (e) {
+      /* quota/security error — keep the warning visible until a save works */
+      showSaveWarning();
+    }
+  }
+
+  /* Returns { restored, saved } counts. `saved` is how many records the payload
+   * held before the 200 cap so the caller can say when data was dropped. */
+  function restoreEvents() {
+    var raw;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch (e) { return { restored: 0, saved: 0 }; }
+    if (!raw) return { restored: 0, saved: 0 };
+
+    var data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) { return { restored: 0, saved: 0 }; }
+    if (!data || typeof data !== 'object') {
+      skipNextSave = true;
+      return { restored: 0, saved: 0 };
+    }
+    /* v2 wraps each record as { options, uid }; v1 stored bare options. A
+     * newer/foreign version must not be silently replaced by an empty calendar,
+     * so skip the next automatic save until the visitor changes the list. */
+    var legacy = data.version === 1;
+    if (!legacy && data.version !== STORAGE_VERSION) {
+      skipNextSave = true;
+      return { restored: 0, saved: 0 };
+    }
+    if (!Array.isArray(data.events)) return { restored: 0, saved: 0 };
+
+    var saved = data.events.length;
+    var count = 0;
+    data.events.slice(0, MAX_RESTORED_EVENTS).forEach(function (record) {
+      if (!record || typeof record !== 'object') return;
+      var options = legacy ? record : record.options;
+      if (!options || typeof options !== 'object') return;
+      try {
+        var ev = cal.addEvent(deserializeOptions(options));
+        /* v1 records carry no uid, so the fresh one addEvent generated stands. */
+        var uid = legacy ? null : record.uid;
+        /* ev.uid is stored already escaped, so assigning the stored string
+         * directly reproduces the identical UID line. A missing or invalid uid
+         * keeps the freshly generated one instead of dropping the event. */
+        if (typeof uid === 'string' && uid.length > 0 && uid.length <= 200 &&
+            !/[\u0000-\u001F\u007F]/.test(uid)) {
+          ev.uid = uid;
+        }
+        count++;
+      } catch (e) { /* an event that no longer validates is skipped */ }
+    });
+    return { restored: count, saved: saved };
+  }
+
   /* ---------- init ---------- */
 
   defaultFormDates();
@@ -1038,7 +1436,24 @@
   syncAllDayUI();
   syncRecurUI();
   syncReminderUI();
+  var restored = 0;
+  var savedTotal = 0;
+  try {
+    var restoreResult = restoreEvents();
+    restored = restoreResult.restored;
+    savedTotal = restoreResult.saved;
+  } catch (e) {
+    /* No restore path may leave the page half-initialized: drop whatever was
+     * loaded and continue with an empty list. */
+    cal.clear();
+    setStatus('Saved events could not be restored.', true);
+  }
   render();
+  if (restored && savedTotal > restored) {
+    setStatus('Restored ' + restored + ' of ' + savedTotal + ' saved events — the rest could not be restored.');
+  } else if (restored) {
+    setStatus('Restored ' + restored + ' saved event(s).');
+  }
   /* Start keyboard visitors in the first field (no scroll-jumping). */
   $('title').focus();
 })();

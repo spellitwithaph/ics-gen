@@ -296,6 +296,24 @@
   }
 
   /*
+   * Probe an IANA time zone once. A zone Intl cannot resolve would throw from
+   * zoneParts() while rendering or describing the event, and a bad zone loaded
+   * from storage could brick the page on every load; rejecting it here surfaces
+   * a normal validation Error at the library boundary and keeps those
+   * render/describe paths safe.
+   */
+  function assertTimeZone(timezone) {
+    var s = String(timezone);
+    rejectControlChars(s, 'event "timezone"');
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: s });
+    } catch (e) {
+      throw new Error('ICS Generator: unknown time zone "' + s + '".');
+    }
+    return s;
+  }
+
+  /*
    * Eager validation: every single-line field is checked when the event is
    * constructed, so an invalid event can never enter the calendar and break a
    * later render(). The same checks run again during serialization (toLines)
@@ -303,7 +321,7 @@
    */
   function validateEventOptions(options) {
     if (options.url) sanitizeUrl(options.url);
-    if (options.timezone) rejectControlChars(String(options.timezone), 'event "timezone"');
+    if (options.timezone) assertTimeZone(options.timezone);
     if (options.rrule) rejectControlChars(String(options.rrule), 'event "rrule"');
     if (options.status) rejectControlChars(String(options.status), 'event "status"');
     (options.alarms || []).forEach(function (alarm) {
@@ -421,6 +439,29 @@
     var idx = typeof eventOrIndex === 'number' ? eventOrIndex : this.events.indexOf(eventOrIndex);
     if (idx >= 0) this.events.splice(idx, 1);
     return idx >= 0;
+  };
+
+  /*
+   * Replace the event at `eventOrIndex` (a numeric index or an existing VEvent)
+   * with a new one built from `options`. The new VEvent takes the same slot, so
+   * list position is preserved; when `options.uid` is omitted the previous
+   * event's uid is carried over to keep identity stable across regenerations.
+   *
+   * Validation runs through the same VEvent constructor as addEvent, and the
+   * candidate is built before the array is touched, so invalid options throw
+   * without changing the calendar. Returns the new VEvent, or false when the
+   * target does not exist.
+   */
+  Calendar.prototype.updateEvent = function (eventOrIndex, options) {
+    var idx = typeof eventOrIndex === 'number' ? eventOrIndex : this.events.indexOf(eventOrIndex);
+    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= this.events.length) return false;
+
+    var previous = this.events[idx];
+    var event = new VEvent(options || {});
+    if (!(options && options.uid)) event.uid = previous.uid;
+
+    this.events[idx] = event;
+    return event;
   };
 
   Calendar.prototype.clear = function () {

@@ -199,6 +199,8 @@
           </div>
         </div>
 
+        <p class="hint" id="edit-kept-hint" hidden></p>
+
         <div class="field-row">
           <div class="field">
             <label for="status">Event Status</label>
@@ -237,8 +239,9 @@
 
         <div class="form-actions">
           <button id="add-btn" type="submit" class="btn primary">Add event</button>
+          <button id="cancel-edit-btn" class="btn ghost" type="button" hidden>Cancel</button>
           <button id="download-btn" class="btn" type="button" disabled>Download .ics</button>
-          <span id="status-msg" class="status-msg" role="status"></span>
+          <span id="status-msg" class="status-msg" role="status" tabindex="-1"></span>
         </div>
       </form>
     </section>
@@ -250,8 +253,10 @@
           <button id="clear-btn" class="btn ghost" type="button">Clear all</button>
           <button id="copy-btn" class="btn ghost" type="button" disabled>Copy .ics</button>
         </div>
-        <h2 id="list-heading"><span id="event-count">0 events</span></h2>
+        <h2 id="list-heading"><span id="event-count" aria-live="polite">0 events</span></h2>
       </div>
+
+      <p id="save-warning" class="status-msg error" role="status" hidden></p>
 
       <ul id="event-list">
         <li class="empty">No events yet — add your first event with the form, or load the samples.</li>

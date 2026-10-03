@@ -254,6 +254,28 @@ test('timezone values containing control characters are rejected', function () {
   }, /control characters/);
 });
 
+test('unknown time zones are rejected at construction', function () {
+  assert.throws(function () {
+    makeEvent({ title: 'Bad zone', start: new Date('2026-01-05T10:00:00Z'), timezone: 'Not/AZone' });
+  }, /unknown time zone/i);
+});
+
+test('updateEvent rejects an unknown time zone and leaves the calendar alone', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  assert.throws(function () {
+    cal.updateEvent(0, { title: 'A', start: new Date('2026-01-05T10:00:00Z'), timezone: 'Not/AZone' });
+  }, /unknown time zone/i);
+  assert.eq(cal.events.length, 1, 'a failed update must not change the calendar');
+  assert.eq(cal.events[0].options.timezone, undefined);
+});
+
+test('valid IANA zones, UTC, and an omitted zone all pass validation', function () {
+  assert.ok(makeEvent({ title: 'NY', start: new Date('2026-01-05T10:00:00Z'), timezone: 'America/New_York' }));
+  assert.ok(makeEvent({ title: 'UTC', start: new Date('2026-01-05T10:00:00Z'), timezone: 'UTC' }));
+  assert.ok(makeEvent({ title: 'None', start: new Date('2026-01-05T10:00:00Z') }));
+});
+
 /* ---------- recurrence ---------- */
 
 test('rrule is passed through to RRULE', function () {
@@ -438,6 +460,133 @@ test('removeEvent removes by reference and by index and reports success', functi
   assert.eq(cal.removeEvent(first), false, 'removing a missing event returns false');
   assert.eq(cal.removeEvent(0), true);
   assert.eq(cal.events.length, 0);
+});
+
+/* ---------- updateEvent ---------- */
+
+test('updateEvent replaces in place and carries over the uid when omitted', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  var target = cal.addEvent({ title: 'B', start: new Date('2026-01-06T10:00:00Z'), durationMinutes: 30 });
+  cal.addEvent({ title: 'C', start: new Date('2026-01-07T10:00:00Z'), durationMinutes: 30 });
+
+  var updated = cal.updateEvent(1, { title: 'B renamed', start: new Date('2026-01-06T11:00:00Z'), durationMinutes: 45 });
+  assert.ok(updated, 'updateEvent should return the new VEvent');
+  assert.eq(cal.events.length, 3, 'no event is added or removed');
+  assert.eq(cal.events.indexOf(updated), 1, 'the new event keeps the original index');
+  assert.eq(updated.uid, target.uid, 'uid is carried over when options.uid is omitted');
+  assert.eq(cal.events[0].options.title, 'A');
+  assert.eq(cal.events[2].options.title, 'C');
+});
+
+test('updateEvent honors an explicit uid', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  var updated = cal.updateEvent(0, { title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30, uid: 'explicit-uid-1' });
+  assert.eq(updated.uid, 'explicit-uid-1');
+  assert.includes(unfold(cal.toString()), 'UID:explicit-uid-1');
+});
+
+test('updateEvent output reflects the new field values', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'Old title',
+    start: new Date('2026-01-05T10:00:00Z'),
+    durationMinutes: 30,
+    description: 'old',
+    location: 'Old room'
+  });
+  cal.updateEvent(0, {
+    title: 'New title',
+    start: new Date('2026-02-01T09:00:00Z'),
+    durationMinutes: 90,
+    description: 'new description',
+    location: 'New room'
+  });
+  var text = unfold(cal.toString());
+  assert.includes(text, 'SUMMARY:New title');
+  assert.includes(text, 'DESCRIPTION:new description');
+  assert.includes(text, 'LOCATION:New room');
+  assert.includes(text, 'DTSTART:20260201T090000Z');
+  assert.includes(text, 'DTEND:20260201T103000Z');
+  assert.ok(text.indexOf('Old title') === -1, 'the old title must be gone');
+});
+
+test('updateEvent resolves the target by VEvent reference too', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  var target = cal.addEvent({ title: 'B', start: new Date('2026-01-06T10:00:00Z'), durationMinutes: 30 });
+  var updated = cal.updateEvent(target, { title: 'B2', start: new Date('2026-01-06T10:00:00Z'), durationMinutes: 30 });
+  assert.ok(updated);
+  assert.eq(cal.events[1], updated);
+  assert.eq(cal.events[1].uid, target.uid);
+});
+
+test('updateEvent returns false for an invalid target and leaves the calendar alone', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  var opts = { title: 'X', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 };
+  assert.eq(cal.updateEvent(5, opts), false, 'out-of-range index returns false');
+  assert.eq(cal.updateEvent(-1, opts), false, 'negative index returns false');
+  assert.eq(cal.updateEvent(new ICS.VEvent(opts), opts), false, 'a foreign VEvent is not found');
+  assert.eq(cal.events.length, 1);
+  assert.eq(cal.events[0].options.title, 'A');
+});
+
+test('updateEvent rejects non-integer and NaN indices', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  cal.addEvent({ title: 'B', start: new Date('2026-01-06T10:00:00Z'), durationMinutes: 30 });
+  var opts = { title: 'X', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 };
+  assert.eq(cal.updateEvent(1.5, opts), false, 'a fractional index returns false');
+  assert.eq(cal.updateEvent(NaN, opts), false, 'NaN returns false');
+  assert.eq(cal.events[0].options.title, 'A');
+  assert.eq(cal.events[1].options.title, 'B');
+});
+
+test('updateEvent validates options exactly like addEvent', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  assert.throws(function () {
+    cal.updateEvent(0, { start: new Date('2026-01-05T10:00:00Z') });
+  }, /"title" is required/);
+  assert.throws(function () {
+    cal.updateEvent(0, { title: 'Bad', start: 'not-a-date' });
+  }, /"start" must be a Date or/);
+  assert.throws(function () {
+    cal.updateEvent(0, { title: 'Bad', start: new Date('2026-01-05T10:00:00Z'), url: 'javascript:alert(1)' });
+  }, /absolute http\(s\) URL/);
+  assert.eq(cal.events.length, 1, 'a failed update must not change the calendar');
+  assert.eq(cal.events[0].options.title, 'A');
+});
+
+test('updateEvent replaces alarms and attendees arrays instead of merging them', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'A',
+    start: new Date('2026-01-05T10:00:00Z'),
+    durationMinutes: 30,
+    alarms: [{ trigger: -10 }, { trigger: -20 }],
+    attendees: [
+      { email: 'a@example.com' },
+      { email: 'b@example.com' }
+    ]
+  });
+  var updated = cal.updateEvent(0, {
+    title: 'A',
+    start: new Date('2026-01-05T10:00:00Z'),
+    durationMinutes: 30,
+    alarms: [{ trigger: '-PT5M' }],
+    attendees: [{ email: 'c@example.com' }]
+  });
+  assert.eq(updated.options.alarms.length, 1);
+  assert.eq(updated.options.alarms[0].trigger, '-PT5M');
+  assert.eq(updated.options.attendees.length, 1);
+  assert.eq(updated.options.attendees[0].email, 'c@example.com');
+  var text = unfold(cal.toString());
+  assert.ok(text.indexOf('a@example.com') === -1, 'the old attendees must be gone');
+  assert.includes(text, 'ATTENDEE:mailto:c@example.com');
+  assert.eq((text.match(/BEGIN:VALARM/g) || []).length, 1, 'only the new alarm remains');
 });
 
 test('clear removes every event', function () {
