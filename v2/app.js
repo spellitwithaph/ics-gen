@@ -1191,6 +1191,10 @@
   var STORAGE_KEY = 'ics-gen-v2';
   var STORAGE_VERSION = 1;
   var MAX_RESTORED_EVENTS = 200;
+  /* skipNextSave is set when a restore is refused (foreign/newer payload) so
+   * the very next automatic save does not overwrite data this version does not
+   * understand. */
+  var skipNextSave = false;
 
   function serializeDateValue(v) {
     if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
@@ -1222,10 +1226,17 @@
   }
 
   function saveEvents() {
+    if (skipNextSave) { skipNextSave = false; return; }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: STORAGE_VERSION,
-        events: cal.events.map(function (ev) { return serializeOptions(ev.options); })
+        /* Each record carries its effective uid alongside the options so a
+         * reload reproduces the identical UID line instead of a new random one. */
+        events: cal.events.map(function (ev) {
+          var options = serializeOptions(ev.options);
+          delete options.uid;
+          return { options: options, uid: ev.uid };
+        })
       }));
     } catch (e) { /* quota/security error — ignore */ }
   }
@@ -1242,13 +1253,30 @@
     try {
       data = JSON.parse(raw);
     } catch (e) { return 0; }
-    if (!data || data.version !== STORAGE_VERSION || !Array.isArray(data.events)) return 0;
+    if (!data || typeof data !== 'object' || data.version !== STORAGE_VERSION) {
+      /* A foreign or newer payload must not be silently replaced by this
+       * version's empty calendar: skip the next automatic save so it survives
+       * until the visitor actually changes the list. */
+      skipNextSave = true;
+      return 0;
+    }
+    if (!Array.isArray(data.events)) return 0;
 
     var count = 0;
-    data.events.slice(0, MAX_RESTORED_EVENTS).forEach(function (options) {
+    data.events.slice(0, MAX_RESTORED_EVENTS).forEach(function (record) {
+      if (!record || typeof record !== 'object') return;
+      var options = record.options;
       if (!options || typeof options !== 'object') return;
       try {
-        cal.addEvent(deserializeOptions(options));
+        var ev = cal.addEvent(deserializeOptions(options));
+        var uid = record.uid;
+        /* ev.uid is stored already escaped, so assigning the stored string
+         * directly reproduces the identical UID line. A missing or invalid uid
+         * keeps the freshly generated one instead of dropping the event. */
+        if (typeof uid === 'string' && uid.length > 0 && uid.length <= 200 &&
+            !/[\u0000-\u001F\u007F]/.test(uid)) {
+          ev.uid = uid;
+        }
         count++;
       } catch (e) { /* an event that no longer validates is skipped */ }
     });
