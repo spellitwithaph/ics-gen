@@ -238,8 +238,19 @@
       var end = instantFromDateInput(endDateEl.value, endTimeEl.value);
       if (newStart && end && prevStartInstant && newStart.getTime() >= end.getTime()) {
         var duration = Math.max(end.getTime() - prevStartInstant.getTime(), 60 * 60000);
-        var p = zoneParts(new Date(newStart.getTime() + duration),
-                          timezoneEl.value || localTimeZone());
+        var tz = timezoneEl.value || localTimeZone();
+        var projected = newStart.getTime() + duration;
+        var p = zoneParts(new Date(projected), tz);
+        /* Around a DST fall-back the projected wall clock can re-parse to the
+         * same (or an earlier) instant as the start, because the repeated hour
+         * is always read as its first occurrence. Step the projection forward
+         * until what readForm() would parse is strictly after the new start. */
+        for (var i = 0; i < 6; i++) {
+          var reparsed = zonedTimeToDate(p.year, p.month, p.day, p.hour, p.minute, tz);
+          if (reparsed.getTime() > newStart.getTime()) break;
+          projected += 30 * 60000;
+          p = zoneParts(new Date(projected), tz);
+        }
         endDateEl.value = isoFromParts(p);
         endTimeEl.value = pad2(p.hour) + ':' + pad2(p.minute);
       }
@@ -248,6 +259,9 @@
   }
   startDateEl.addEventListener('change', keepEndAfterStart);
   startTimeEl.addEventListener('change', keepEndAfterStart);
+  /* The cached start instant is zone-dependent; re-read it when the zone changes
+   * so a later start change measures duration from the correct instant. */
+  timezoneEl.addEventListener('change', rememberStartInstant);
 
   /* ---------- reading the form ---------- */
 
