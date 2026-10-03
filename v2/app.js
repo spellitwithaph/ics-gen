@@ -453,6 +453,18 @@
     return null;
   }
 
+  /* The single alarm the reminder control can represent, as { value, unit },
+   * or null when the array is not fully representable (more than one alarm, a
+   * non-DISPLAY action, a description, or a trigger the control cannot show). */
+  function simpleAlarm(alarms) {
+    if (!Array.isArray(alarms) || alarms.length !== 1) return null;
+    var a = alarms[0];
+    if (!a) return null;
+    var action = a.action ? String(a.action).toUpperCase() : 'DISPLAY';
+    if (action !== 'DISPLAY' || a.description) return null;
+    return parseTrigger(a.trigger);
+  }
+
   var ATTENDEE_ROLES = [
     ['REQ-PARTICIPANT', 'Required'],
     ['OPT-PARTICIPANT', 'Optional'],
@@ -566,7 +578,14 @@
 
     if (allDay) {
       setDateInput(startDateEl, ev.start);
-      if (ev.end) setDateInput(endDateEl, ev.end);
+      if (ev.end) {
+        setDateInput(endDateEl, ev.end);
+      } else if (isDateParts(ev.start)) {
+        /* No explicit end: mirror computeEnd's exclusive start+1day default so
+         * a no-change update reproduces the same DTEND instead of keeping a
+         * stale end date that happened to be in the input. */
+        endDateEl.value = addDays(isoFromParts(ev.start), 1);
+      }
     } else {
       var zone = zoneForForm(ev.timezone);
       var sp = zoneParts(ev.start, zone);
@@ -588,7 +607,7 @@
     $('recur-until').value = rule ? rule.until : '';
     syncRecurUI();
 
-    var alarm = ev.alarms && ev.alarms[0] ? parseTrigger(ev.alarms[0].trigger) : null;
+    var alarm = simpleAlarm(ev.alarms);
     $('reminder-toggle').value = alarm ? 'on' : 'off';
     if (alarm) {
       $('reminder-value').value = alarm.value;
@@ -805,14 +824,36 @@
   /* The VEvent currently being edited, or null when the form adds a new event.
    * Tracking the reference (not an index) keeps the update pointed at the same
    * event even if the list is reordered or an item is removed while the form is
-   * open. */
+   * open. `editingKept` remembers the parts of the original the simple form
+   * cannot represent so a no-change update does not destroy them. */
   var editingEvent = null;
+  var editingKept = { rrule: null, alarms: null };
+
+  /* The parts of `ev` the form cannot represent and must therefore be carried
+   * through an update when the visitor leaves that control untouched. */
+  function keptFromEvent(ev) {
+    var o = ev.options;
+    var kept = { rrule: null, alarms: null };
+    if (o.rrule && !simpleRule(o.rrule, ev.allDay, timezoneEl.value)) {
+      kept.rrule = o.rrule;
+    }
+    if (Array.isArray(o.alarms) && o.alarms.length && !simpleAlarm(o.alarms)) {
+      kept.alarms = o.alarms.map(copyPlain);
+    }
+    return kept;
+  }
+
+  function updateKeptHint() {
+    $('edit-kept-hint').hidden = !(editingEvent && (editingKept.rrule || editingKept.alarms));
+  }
 
   function startEditing(index) {
     var ev = cal.events[index];
     if (!ev) return;
     editingEvent = ev;
     populateForm(ev.options);
+    editingKept = keptFromEvent(ev);
+    updateKeptHint();
     $('form-heading').textContent = 'Edit event';
     $('add-btn').textContent = 'Update event';
     $('cancel-edit-btn').hidden = false;
@@ -822,6 +863,8 @@
 
   function exitEditMode() {
     editingEvent = null;
+    editingKept = { rrule: null, alarms: null };
+    updateKeptHint();
     $('form-heading').textContent = 'New event';
     $('add-btn').textContent = 'Add event';
     $('cancel-edit-btn').hidden = true;
@@ -860,6 +903,14 @@
           render();
           setStatus('The event being edited was removed — added as a new event instead.');
         } else {
+          /* Carry through the parts the simple form cannot represent unless the
+           * visitor actively chose a new value for that control. */
+          if (opts.rrule == null && editingKept.rrule && $('recur-freq').value === 'NONE') {
+            opts.rrule = editingKept.rrule;
+          }
+          if (opts.alarms == null && editingKept.alarms && $('reminder-toggle').value === 'off') {
+            opts.alarms = editingKept.alarms.map(copyPlain);
+          }
           updated = cal.updateEvent(index, opts);
           exitEditMode();
           render();
