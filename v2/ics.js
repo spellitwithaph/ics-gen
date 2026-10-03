@@ -454,7 +454,7 @@
    */
   Calendar.prototype.updateEvent = function (eventOrIndex, options) {
     var idx = typeof eventOrIndex === 'number' ? eventOrIndex : this.events.indexOf(eventOrIndex);
-    if (!(idx >= 0) || idx >= this.events.length) return false;
+    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= this.events.length) return false;
 
     var previous = this.events[idx];
     var event = new VEvent(options || {});

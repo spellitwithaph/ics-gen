@@ -766,7 +766,7 @@
             setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
             return;
           }
-          var copy = cal.addEvent(cloneEventOptions(ev.options));
+          cal.addEvent(cloneEventOptions(ev.options));
           render();
           setStatus('Duplicated "' + ev.options.title + '".');
         });
@@ -805,9 +805,13 @@
    * a "(copy)" suffix, no uid, fresh categories/attendees/alarms arrays (with
    * copied object elements), and rebuilt Date / { year, month, day } values so
    * editing the copy can never mutate the original. */
+  /* Never let stored JSON rewire an object's prototype. */
   function copyPlain(o) {
     var out = {};
-    Object.keys(o).forEach(function (k) { out[k] = o[k]; });
+    Object.keys(o).forEach(function (k) {
+      if (k === '__proto__' || k === 'constructor') return;
+      out[k] = o[k];
+    });
     return out;
   }
 

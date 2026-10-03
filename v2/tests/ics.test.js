@@ -533,6 +533,17 @@ test('updateEvent returns false for an invalid target and leaves the calendar al
   assert.eq(cal.events[0].options.title, 'A');
 });
 
+test('updateEvent rejects non-integer and NaN indices', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
+  cal.addEvent({ title: 'B', start: new Date('2026-01-06T10:00:00Z'), durationMinutes: 30 });
+  var opts = { title: 'X', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 };
+  assert.eq(cal.updateEvent(1.5, opts), false, 'a fractional index returns false');
+  assert.eq(cal.updateEvent(NaN, opts), false, 'NaN returns false');
+  assert.eq(cal.events[0].options.title, 'A');
+  assert.eq(cal.events[1].options.title, 'B');
+});
+
 test('updateEvent validates options exactly like addEvent', function () {
   var cal = new ICS.Calendar();
   cal.addEvent({ title: 'A', start: new Date('2026-01-05T10:00:00Z'), durationMinutes: 30 });
