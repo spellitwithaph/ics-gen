@@ -40,6 +40,10 @@
     var p = v.split(':').map(Number);
     return { hour: p[0], minute: p[1] };
   }
+  function isDateParts(v) {
+    return v && typeof v === 'object' &&
+      typeof v.year === 'number' && typeof v.month === 'number' && typeof v.day === 'number';
+  }
   function slugify(s) {
     return (s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'calendar');
   }
@@ -704,6 +708,17 @@
         edit.disabled = i === editingIndex;
         edit.addEventListener('click', function () { startEditing(i); });
 
+        var dup = document.createElement('button');
+        dup.type = 'button';
+        dup.className = 'btn ghost';
+        dup.textContent = 'Duplicate';
+        dup.setAttribute('aria-label', 'Duplicate ' + ev.options.title);
+        dup.addEventListener('click', function () {
+          var copy = cal.addEvent(cloneEventOptions(ev.options));
+          render();
+          setStatus('Duplicated "' + ev.options.title + '".');
+        });
+
         var del = document.createElement('button');
         del.type = 'button';
         del.className = 'btn ghost';
@@ -715,6 +730,7 @@
 
         li.appendChild(info);
         li.appendChild(edit);
+        li.appendChild(dup);
         li.appendChild(del);
         list.appendChild(li);
       });
@@ -731,6 +747,34 @@
   }
 
   /* ---------- edit mode ---------- */
+  /* Deep-enough copy of an event's options for duplication: a fresh title with
+   * a "(copy)" suffix, no uid, fresh categories/attendees/alarms arrays (with
+   * copied object elements), and rebuilt Date / { year, month, day } values so
+   * editing the copy can never mutate the original. */
+  function copyPlain(o) {
+    var out = {};
+    Object.keys(o).forEach(function (k) { out[k] = o[k]; });
+    return out;
+  }
+
+  function copyDateValue(v) {
+    if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
+    if (v instanceof Date) return new Date(v.getTime());
+    return v;
+  }
+
+  function cloneEventOptions(o) {
+    var clone = copyPlain(o);
+    delete clone.uid;
+    clone.title = (o.title || '') + ' (copy)';
+    if (o.start != null) clone.start = copyDateValue(o.start);
+    if (o.end != null) clone.end = copyDateValue(o.end);
+    if (Array.isArray(o.categories)) clone.categories = o.categories.slice();
+    if (Array.isArray(o.attendees)) clone.attendees = o.attendees.map(copyPlain);
+    if (Array.isArray(o.alarms)) clone.alarms = o.alarms.map(copyPlain);
+    if (o.organizer) clone.organizer = copyPlain(o.organizer);
+    return clone;
+  }
 
   /* Index of the event currently being edited, or null when the form adds a
    * new event. Kept separate from the form because importing an .ics file can
