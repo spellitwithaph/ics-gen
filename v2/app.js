@@ -684,15 +684,25 @@
     } else {
       cal.events.forEach(function (ev, i) {
         var li = document.createElement('li');
+        li.setAttribute('data-index', i);
 
         var info = document.createElement('div');
         info.className = 'event-info';
         var strong = document.createElement('strong');
         strong.textContent = ev.options.title;
+        strong.tabIndex = -1; /* programmatic focus target after an update */
         var small = document.createElement('small');
         small.textContent = describeEvent(ev);
         info.appendChild(strong);
         info.appendChild(small);
+
+        var edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'btn ghost';
+        edit.textContent = 'Edit';
+        edit.setAttribute('aria-label', 'Edit ' + ev.options.title);
+        edit.disabled = i === editingIndex;
+        edit.addEventListener('click', function () { startEditing(i); });
 
         var del = document.createElement('button');
         del.type = 'button';
@@ -704,6 +714,7 @@
         });
 
         li.appendChild(info);
+        li.appendChild(edit);
         li.appendChild(del);
         list.appendChild(li);
       });
@@ -719,12 +730,74 @@
      * never auto-collapses; the visitor can still toggle it. */
   }
 
+  /* ---------- edit mode ---------- */
+
+  /* Index of the event currently being edited, or null when the form adds a
+   * new event. Kept separate from the form because importing an .ics file can
+   * repopulate the form without leaving edit mode. */
+  var editingIndex = null;
+
+  function startEditing(index) {
+    var ev = cal.events[index];
+    if (!ev) return;
+    editingIndex = index;
+    populateForm(ev.options);
+    $('form-heading').textContent = 'Edit event';
+    $('add-btn').textContent = 'Update event';
+    $('cancel-edit-btn').hidden = false;
+    render(); /* reflect the disabled Edit button on this item */
+    $('title').focus();
+  }
+
+  function exitEditMode() {
+    editingIndex = null;
+    $('form-heading').textContent = 'New event';
+    $('add-btn').textContent = 'Add event';
+    $('cancel-edit-btn').hidden = true;
+  }
+
+  /* Face the event the visitor just changed: focus its title in the list, or
+   * the status message when the item cannot be found. */
+  function focusEventTitle(index) {
+    var li = $('event-list').querySelector('li[data-index="' + index + '"]');
+    var strong = li && li.querySelector('strong');
+    if (strong) { strong.focus(); return; }
+    $('status-msg').focus();
+  }
+
+  $('cancel-edit-btn').addEventListener('click', function () {
+    exitEditMode(); /* the form keeps its content */
+    $('title').focus();
+  });
+
   /* ---------- actions ---------- */
 
   $('event-form').addEventListener('submit', function (e) {
     e.preventDefault();
     try {
-      var ev = cal.addEvent(readForm());
+      var opts = readForm();
+
+      if (editingIndex !== null) {
+        var index = editingIndex;
+        var updated;
+        if (cal.events[index]) {
+          updated = cal.updateEvent(index, opts);
+          exitEditMode();
+          render();
+          setStatus('Updated "' + updated.options.title + '".');
+        } else {
+          /* The edited event was removed while the form was open — keep the
+           * visitor's work by adding it as a new event instead. */
+          updated = cal.addEvent(opts);
+          exitEditMode();
+          render();
+          setStatus('The event you were editing was removed — added "' + updated.options.title + '" instead.');
+        }
+        focusEventTitle(cal.events.indexOf(updated));
+        return;
+      }
+
+      var ev = cal.addEvent(opts);
       /* quick-entry flow: roll the form forward to the next slot */
       if (!$('all-day').checked && endDateEl.value && endTimeEl.value) {
         startDateEl.value = endDateEl.value;
