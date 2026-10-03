@@ -10,11 +10,24 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-09-30T02:48:16Z` (ISO 8601, UTC)
+> **Last updated:** `2026-10-03T21:27:34Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
 > `YYYY-MM-DDTHH:MM:SSZ`), so each merge's doc freshness is auditable at a glance.
+
+## v2 preview
+
+A v2 of the site is in development and served from `/v2/`, so the stable
+version can keep running untouched at the site root. `/` remains v1; `/v2/` is
+the preview where new work lands until it is promoted.
+
+The v2 libraries ship with the repo's zero-dependency Node test suite. Run it
+from the repo root:
+
+```bash
+node v2/tests/run.js
+```
 
 ## Is this possible on a static site? Yes.
 
@@ -33,6 +46,7 @@ The only things a static host *can't* do are server-side tasks — e.g. emailing
 | `app.js` | Demo-app logic (kept in its own file so the page can enforce a strict CSP). |
 | `og-image.png` | 1200×630 social share image for Open Graph / X (Twitter) cards. |
 | `sitemap.xml`, `robots.txt` | Search-engine discovery for the hosted site. |
+| `v2/` | The v2 preview copy of the site plus its Node test suite (`v2/tests`). |
 | `README.md` | This file. |
 
 ## Quick start
