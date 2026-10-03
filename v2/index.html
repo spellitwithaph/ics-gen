@@ -21,7 +21,7 @@
 <meta name="twitter:title" content="ICS Generator v2 — Free iCalendar (.ics) Generator, No Sign-Up">
 <meta name="twitter:description" content="Create iCalendar (.ics) files free in your browser. No sign-up, no uploads — import into Google Calendar, Outlook & Apple Calendar.">
 <meta name="twitter:image" content="https://ics-gen.pages.dev/v2/og-image.png">
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='4' y='8' width='56' height='50' rx='10' fill='%23f7f9fc' stroke='%232563eb' stroke-width='4'/><rect x='4' y='8' width='56' height='16' rx='10' fill='%232563eb'/><rect x='4' y='14' width='56' height='10' fill='%232563eb'/><circle cx='18' cy='16' r='3.5' fill='%23f7f9fc'/><circle cx='46' cy='16' r='3.5' fill='%23f7f9fc'/><text x='32' y='49' font-family='system-ui,sans-serif' font-size='26' font-weight='700' text-anchor='middle' fill='%232563eb'>2</text></svg>">
 <link rel="stylesheet" href="styles.css">
 
 <script type="application/ld+json">
@@ -86,7 +86,7 @@
     <section class="panel" aria-labelledby="form-heading">
       <h2 id="form-heading">New event</h2>
 
-      <details id="import-box" open>
+      <details id="import-box">
         <summary>Import an .ics file (drop or paste text)</summary>
         <label id="drop-zone" class="drop-zone" for="import-file">
           <strong>Drop an .ics file here</strong>
@@ -101,7 +101,7 @@
           <button id="import-text-btn" class="btn" type="button">Import pasted text</button>
         </div>
         <p class="hint">Imported events are added to the list and preview; a
-        single-event import also fills the form above.</p>
+        single-event import also fills in the event form.</p>
       </details>
       <p id="import-status" class="status-msg" role="status"></p>
 
@@ -146,13 +146,14 @@
             <input id="start-time" type="time">
           </div>
           <div class="field">
-            <label for="end-date">End date</label>
+            <label for="end-date" id="end-date-label">End date</label>
             <input id="end-date" type="date">
           </div>
           <div class="field" id="field-end-time">
             <label for="end-time">End time</label>
             <input id="end-time" type="time">
           </div>
+          <p class="hint" id="all-day-end-hint" hidden>All-day end dates are exclusive: an event ending Jan 6 runs through Jan 5 only.</p>
         </div>
 
         <div class="field-row tri" id="recur-row">
@@ -235,7 +236,7 @@
         </fieldset>
 
         <div class="form-actions">
-          <button id="add-btn" type="submit" class="btn primary">Add to .ics</button>
+          <button id="add-btn" type="submit" class="btn primary">Add event</button>
           <button id="download-btn" class="btn" type="button" disabled>Download .ics</button>
           <span id="status-msg" class="status-msg" role="status"></span>
         </div>
@@ -253,7 +254,7 @@
       </div>
 
       <ul id="event-list">
-        <li class="empty">No events yet. Add one on the left, or load the samples.</li>
+        <li class="empty">No events yet — add your first event with the form, or load the samples.</li>
       </ul>
 
       <details id="preview-box" open>

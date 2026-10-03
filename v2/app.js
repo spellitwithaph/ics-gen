@@ -176,6 +176,7 @@
     endDateEl.value = toISODate(now);
     startTimeEl.value = '09:00';
     endTimeEl.value = '10:00';
+    rememberStartInstant();
   }
 
   function syncAllDayUI() {
@@ -184,6 +185,9 @@
     $('field-end-time').hidden = allDay;
     /* All-day events are date-only, so a time zone would be misleading. */
     $('field-timezone').hidden = allDay;
+    /* DTEND on an all-day event is exclusive — only worth explaining when the
+     * end date itself is visible. */
+    $('all-day-end-hint').hidden = !allDay;
     if (allDay && endDateEl.value && startDateEl.value && endDateEl.value <= startDateEl.value) {
       endDateEl.value = addDays(startDateEl.value, 1);
     }
@@ -208,6 +212,56 @@
   $('all-day').addEventListener('change', syncAllDayUI);
   $('recur-freq').addEventListener('change', syncRecurUI);
   $('reminder-toggle').addEventListener('change', syncReminderUI);
+
+  /* Keep the end after the start when the start moves past it: shift the end by
+   * the duration entered before the change (min 1 hour). The previous start
+   * instant is cached, because a change event only carries the new value. */
+  var prevStartInstant = null;
+
+  function instantFromDateInput(dateStr, timeStr) {
+    if (!dateStr) return null;
+    var d = parseDateInput(dateStr);
+    var t = parseTimeInput(timeStr || '00:00'); /* missing time → midnight */
+    return zonedTimeToDate(d.year, d.month, d.day, t.hour, t.minute, timezoneEl.value || localTimeZone());
+  }
+
+  function rememberStartInstant() {
+    prevStartInstant = instantFromDateInput(startDateEl.value, startTimeEl.value);
+  }
+
+  function keepEndAfterStart() {
+    if ($('all-day').checked) {
+      /* Plain date strings: end <= start becomes start + 1 day (syncAllDayUI). */
+      syncAllDayUI();
+    } else {
+      var newStart = instantFromDateInput(startDateEl.value, startTimeEl.value);
+      var end = instantFromDateInput(endDateEl.value, endTimeEl.value);
+      if (newStart && end && prevStartInstant && newStart.getTime() >= end.getTime()) {
+        var duration = Math.max(end.getTime() - prevStartInstant.getTime(), 60 * 60000);
+        var tz = timezoneEl.value || localTimeZone();
+        var projected = newStart.getTime() + duration;
+        var p = zoneParts(new Date(projected), tz);
+        /* Around a DST fall-back the projected wall clock can re-parse to the
+         * same (or an earlier) instant as the start, because the repeated hour
+         * is always read as its first occurrence. Step the projection forward
+         * until what readForm() would parse is strictly after the new start. */
+        for (var i = 0; i < 6; i++) {
+          var reparsed = zonedTimeToDate(p.year, p.month, p.day, p.hour, p.minute, tz);
+          if (reparsed.getTime() > newStart.getTime()) break;
+          projected += 30 * 60000;
+          p = zoneParts(new Date(projected), tz);
+        }
+        endDateEl.value = isoFromParts(p);
+        endTimeEl.value = pad2(p.hour) + ':' + pad2(p.minute);
+      }
+    }
+    rememberStartInstant();
+  }
+  startDateEl.addEventListener('change', keepEndAfterStart);
+  startTimeEl.addEventListener('change', keepEndAfterStart);
+  /* The cached start instant is zone-dependent; re-read it when the zone changes
+   * so a later start change measures duration from the correct instant. */
+  timezoneEl.addEventListener('change', rememberStartInstant);
 
   /* ---------- reading the form ---------- */
 
@@ -466,7 +520,12 @@
     remove.className = 'btn ghost att-remove';
     remove.textContent = 'Remove';
     remove.setAttribute('aria-label', 'Remove attendee');
-    remove.addEventListener('click', function () { box.removeChild(row); });
+    remove.addEventListener('click', function () {
+      box.removeChild(row);
+      /* Focus lands on the removed row's button otherwise; keep it on a
+       * stable control so keyboard visitors are not stranded. */
+      $('add-attendee-btn').focus();
+    });
     row.appendChild(remove);
 
     box.appendChild(row);
@@ -517,6 +576,7 @@
       timezoneEl.value = zone;
     }
     syncAllDayUI();
+    rememberStartInstant();
 
     var rule = ev.rrule ? simpleRule(ev.rrule, allDay, timezoneEl.value) : null;
     $('recur-freq').value = rule ? rule.freq : 'NONE';
@@ -572,7 +632,10 @@
           ? new Date(Date.UTC(ev.end.year, ev.end.month - 1, ev.end.day))
           : ev.end;
         if (ep.getTime() - sp.getTime() > 86400000) {
-          bits.push('through ' + ep.toLocaleDateString(undefined, {
+          /* DTEND on an all-day event is exclusive — name the last covered
+           * day, not the day after the event ends. */
+          var lastCovered = new Date(ep.getTime() - 86400000);
+          bits.push('through ' + lastCovered.toLocaleDateString(undefined, {
             weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC'
           }));
         }
@@ -616,7 +679,7 @@
     if (!cal.events.length) {
       var li = document.createElement('li');
       li.className = 'empty';
-      li.textContent = 'No events yet. Add one on the left, or load the samples.';
+      li.textContent = 'No events yet — add your first event with the form, or load the samples.';
       list.appendChild(li);
     } else {
       cal.events.forEach(function (ev, i) {
@@ -671,6 +734,7 @@
         endDateEl.value = toISODate(next);
         endTimeEl.value = toISOTime(next);
       }
+      rememberStartInstant();
       render();
       setStatus('Added "' + ev.options.title + '" to the calendar.');
     } catch (err) {
@@ -975,4 +1039,6 @@
   syncRecurUI();
   syncReminderUI();
   render();
+  /* Start keyboard visitors in the first field (no scroll-jumping). */
+  $('title').focus();
 })();
