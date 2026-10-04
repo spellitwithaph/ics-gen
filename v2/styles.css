@@ -263,6 +263,12 @@ textarea { resize: vertical; }
 @media (max-width: 560px) {
   .field-row, .field-row.tri { grid-template-columns: minmax(0, 1fr); }
 }
+/* The recurrence row shows only two controls side-by-side (interval + ends;
+ * BYDAY is span-all), so give it two tracks on wide screens — three would
+ * shrink eagerly and clip the nested until date input. */
+@media (min-width: 561px) {
+  #recur-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
 
 .check {
   display: flex;
