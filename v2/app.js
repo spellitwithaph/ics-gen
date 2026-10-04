@@ -164,10 +164,16 @@
     } catch (e) { /* fall back below */ }
     if (!label) {
       try { label = 'UTC' + formatOffsetMinutes(wallClockOffset(zone)); }
-      catch (e2) { label = 'UTC+00:00'; }
+      catch (e2) { return null; }
     }
     zoneOffsetCache[zone] = label;
     return label;
+  }
+
+  /* A failed offset lookup stays uncached and has no misleading suffix. */
+  function timeZoneLabel(zone, device) {
+    var offset = utcOffset(zone);
+    return offset ? zone + ' (' + (device ? 'your device, ' : '') + offset + ')' : zone;
   }
 
   /* Every IANA zone the picker can show, excluding the device zone and UTC
@@ -207,7 +213,7 @@
       var og = document.createElement('optgroup');
       og.label = g;
       groups[g].forEach(function (z) {
-        og.appendChild(timeZoneOption(z, z + ' (' + utcOffset(z) + ')'));
+        og.appendChild(timeZoneOption(z, timeZoneLabel(z)));
       });
       sel.appendChild(og);
     });
@@ -231,7 +237,7 @@
 
     var matchedAny = false;
     if (matches(local)) {
-      sel.appendChild(timeZoneOption(local, local + ' (your device, ' + utcOffset(local) + ')'));
+      sel.appendChild(timeZoneOption(local, timeZoneLabel(local, true)));
       matchedAny = true;
     }
     if (local !== 'UTC' && matches('UTC')) {
@@ -244,7 +250,7 @@
     appendZoneGroups(sel, zones);
 
     if (!optionValueExists(sel, current)) {
-      sel.insertBefore(timeZoneOption(current, current + ' (' + utcOffset(current) + ')'), sel.firstChild);
+      sel.insertBefore(timeZoneOption(current, timeZoneLabel(current)), sel.firstChild);
     }
 
     if (filter && !matchedAny) {
