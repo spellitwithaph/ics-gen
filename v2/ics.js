@@ -268,6 +268,37 @@
     return zoneOffsetMinutesFromParts(ts, timeZone);
   }
 
+  /* 'YYYYMMDDTHHMMSS' back to the epoch millis of that wall time read as UTC. */
+  function wallTimeAsUTC(wall) {
+    return Date.UTC(
+      Number(wall.slice(0, 4)),
+      Number(wall.slice(4, 6)) - 1,
+      Number(wall.slice(6, 8)),
+      Number(wall.slice(9, 11)),
+      Number(wall.slice(11, 13)),
+      Number(wall.slice(13, 15))
+    );
+  }
+
+  /*
+   * True when the wall-clock time `date` shows in `timeZone` occurs more than
+   * once that day — the repeated hour of a DST fall-back. Detected
+   * structurally: a transition within ±6h is a prerequisite, and then rebuilding
+   * the same wall time with the *other* offset must produce a different instant
+   * that still formats back to that wall time in the zone. Cheap: three to four
+   * cached offset probes and no tzdata table.
+   */
+  function isAmbiguousWallTime(date, timeZone) {
+    var ts = date.getTime();
+    var before = zoneOffsetMinutes(ts - 6 * 3600000, timeZone);
+    var after = zoneOffsetMinutes(ts + 6 * 3600000, timeZone);
+    if (before === after) return false; /* no transition nearby */
+    var wall = formatDateTimeInZone(date, timeZone);
+    var other = zoneOffsetMinutes(ts, timeZone) === before ? after : before;
+    var alternate = wallTimeAsUTC(wall) - other * 60000;
+    return alternate !== ts && formatDateTimeInZone(new Date(alternate), timeZone) === wall;
+  }
+
   /* Signed ±HHMM offset token used by TZOFFSETFROM/TZOFFSETTO. */
   function formatOffsetMinutes(mins) {
     var sign = mins < 0 ? '-' : '+';
@@ -661,8 +692,20 @@
         lines.push('DTEND;VALUE=DATE:' + formatDateUTC(isDateParts(this.end) ? this.end : toDatePartsUTC(this.end)));
       }
     } else if (tz) {
+      /* DTSTART stays a TZID'd wall clock: it echoes the user's own typed start.
+       * DTEND is the app's derived end instant, so when that instant's wall time
+       * is ambiguous (DST fall-back repeats an hour) a TZID'd wall clock would
+       * name two instants and a consumer resolving the earlier one would compute
+       * a shorter event than intended. Emitting UTC (no TZID) is unambiguous and
+       * RFC-valid alongside a TZID'd DTSTART. */
       lines.push('DTSTART;TZID=' + escapeParam(tz) + ':' + formatDateTimeInZone(this.start, tz));
-      if (this.end) lines.push('DTEND;TZID=' + escapeParam(tz) + ':' + formatDateTimeInZone(this.end, tz));
+      if (this.end) {
+        lines.push(
+          isAmbiguousWallTime(this.end, tz)
+            ? 'DTEND:' + formatDateTimeUTC(this.end)
+            : 'DTEND;TZID=' + escapeParam(tz) + ':' + formatDateTimeInZone(this.end, tz)
+        );
+      }
     } else {
       lines.push('DTSTART:' + formatDateTimeUTC(this.start));
       if (this.end) lines.push('DTEND:' + formatDateTimeUTC(this.end));
