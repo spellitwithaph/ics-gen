@@ -406,6 +406,16 @@ textarea { resize: vertical; }
 #copy-btn { min-width: 92px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Touch targets: coarse pointers (phones/tablets) get 44px-minimum tappable
+ * controls (WCAG 2.5.5). Only the padding floor changes; the desktop density
+ * behind a fine pointer is untouched. */
+@media (pointer: coarse) {
+  .field input,
+  .field select,
+  .field textarea { min-height: 44px; }
+  .btn { min-height: 44px; padding-top: 11px; padding-bottom: 11px; }
+}
+
 .toolbar {
   display: flex;
   flex-direction: column;
@@ -450,7 +460,9 @@ textarea { resize: vertical; }
   color: var(--accent);
 }
 #event-list .gcal-link:hover { color: var(--accent-strong); border-color: var(--border-strong); }
-#event-list .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+#event-list .empty { display: block; color: var(--muted); font-size: 13px; padding: 8px 2px; }
+#event-list .empty-msg { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--text); }
+#event-list .empty-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* VTIMEZONE emission toggle (preview-side option) */
 .vtimezone-toggle { margin: 4px 0 10px; font-size: 13px; font-weight: 500; align-items: flex-start; }

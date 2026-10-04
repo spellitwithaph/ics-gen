@@ -1498,15 +1498,56 @@
       });
   }
 
+  /* Empty-state "Add your first event": put the cursor in the title field.
+   * On phones the action bar is pinned to the bottom, so bring the form into
+   * view first; preventScroll keeps the smooth scroll from being cancelled by
+   * the focus jump. */
+  function focusFormTitle() {
+    var form = $('event-form');
+    if (window.matchMedia && window.matchMedia('(max-width: 920px)').matches && form && form.scrollIntoView) {
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    try {
+      $('title').focus({ preventScroll: true });
+    } catch (e) {
+      $('title').focus();
+    }
+  }
+
   function render() {
     var list = $('event-list');
     list.textContent = '';
 
     if (!cal.events.length) {
-      var li = document.createElement('li');
-      li.className = 'empty';
-      li.textContent = 'No events yet — add your first event with the form, or load the samples.';
-      list.appendChild(li);
+      /* Friendly empty state inside the same list semantics: a short line and
+       * two actions instead of a lone sentence. */
+      var emptyLi = document.createElement('li');
+      emptyLi.className = 'empty';
+
+      var emptyMsg = document.createElement('p');
+      emptyMsg.className = 'empty-msg';
+      emptyMsg.textContent = 'No events yet';
+
+      var emptyActions = document.createElement('div');
+      emptyActions.className = 'empty-actions';
+
+      var addFirstBtn = document.createElement('button');
+      addFirstBtn.type = 'button';
+      addFirstBtn.className = 'btn ghost';
+      addFirstBtn.textContent = 'Add your first event';
+      addFirstBtn.addEventListener('click', focusFormTitle);
+
+      var emptySampleBtn = document.createElement('button');
+      emptySampleBtn.type = 'button';
+      emptySampleBtn.className = 'btn ghost';
+      emptySampleBtn.textContent = 'Load sample events';
+      emptySampleBtn.addEventListener('click', function () { loadSampleEvents(emptySampleBtn); });
+
+      emptyActions.appendChild(addFirstBtn);
+      emptyActions.appendChild(emptySampleBtn);
+      emptyLi.appendChild(emptyMsg);
+      emptyLi.appendChild(emptyActions);
+      list.appendChild(emptyLi);
     } else {
       sortedEventEntries().forEach(function (entry) {
         var ev = entry.ev;
@@ -2156,7 +2197,10 @@
     );
   });
 
-  $('sample-btn').addEventListener('click', function () {
+  /* Shared by the toolbar's #sample-btn and the empty state's "Load sample
+   * events" button so both entry points stay in lockstep. `trigger` is the
+   * control that owns the undo (refocused when the toast is undone). */
+  function loadSampleEvents(trigger) {
     var previousEvents = cal.events.slice();
     var previousForm = snapshotForm();
     /* Loading samples replaces the form, so leave edit mode now: keeping a
@@ -2218,8 +2262,10 @@
       cal.events = previousEvents;
       restoreForm(previousForm);
       restoreEditState(previousForm);
-    }, $('sample-btn'));
-  });
+    }, trigger);
+  }
+
+  $('sample-btn').addEventListener('click', function () { loadSampleEvents($('sample-btn')); });
 
   /* ---------- importing .ics ---------- */
 
