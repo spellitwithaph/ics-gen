@@ -202,27 +202,12 @@
           </div>
         </div>
 
-        <div class="field-row tri" id="reminder-row">
-          <div class="field">
-            <label for="reminder-toggle">Reminder</label>
-            <select id="reminder-toggle">
-              <option value="off" selected>No reminder</option>
-              <option value="on">Remind me</option>
-            </select>
-          </div>
-          <div class="field" id="field-reminder-value">
-            <label for="reminder-value">Time before</label>
-            <input id="reminder-value" type="number" min="1" max="999" step="1" value="10">
-          </div>
-          <div class="field" id="field-reminder-unit">
-            <label for="reminder-unit">Unit</label>
-            <select id="reminder-unit">
-              <option value="minutes" selected>Minutes</option>
-              <option value="hours">Hours</option>
-              <option value="days">Days</option>
-            </select>
-          </div>
-        </div>
+        <fieldset class="contact-group">
+          <legend>Reminders</legend>
+          <div id="reminder-rows"></div>
+          <button id="add-reminder-btn" class="btn ghost" type="button">Add reminder</button>
+          <p class="hint">Up to five reminders, each minutes, hours, or days before the event.</p>
+        </fieldset>
 
         <p class="hint" id="edit-kept-hint" hidden></p>
 

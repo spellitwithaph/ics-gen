@@ -146,8 +146,8 @@ textarea { resize: vertical; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-row.tri { grid-template-columns: repeat(3, 1fr); }
-/* When a tri row is down to its select alone (repeat "Does not repeat",
- * reminder "No reminder"), span a two-column-style width — the same as the
+/* When a tri row is down to its select alone (repeat "Does not repeat"),
+ * span a two-column-style width — the same as the
  * Status select — instead of the first third of the row, which clips the
  * "Does not repeat" label. */
 .field-row.tri.single { grid-template-columns: 1fr; }
@@ -188,6 +188,17 @@ textarea { resize: vertical; }
   cursor: pointer;
 }
 .day-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Reminder rows */
+#reminder-rows { display: grid; gap: 8px; margin-bottom: 10px; }
+#reminder-rows:empty { margin-bottom: 0; }
+.reminder-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.reminder-row .field { margin-bottom: 0; }
+.reminder-remove { padding: 9px 10px; }
+@media (max-width: 560px) {
+  .reminder-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .reminder-remove { grid-column: 1 / -1; justify-self: end; }
+}
 
 /* Organizer + attendees */
 .contact-group { border: 0; margin: 0 0 14px; padding: 0; min-width: 0; }

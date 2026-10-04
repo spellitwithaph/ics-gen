@@ -410,11 +410,18 @@
     $('recur-row').classList.toggle('single', off);
   }
 
+  function reminderRows() {
+    return document.querySelectorAll('#reminder-rows .reminder-row');
+  }
+
   function syncReminderUI() {
-    var off = $('reminder-toggle').value === 'off';
-    $('field-reminder-value').hidden = off;
-    $('field-reminder-unit').hidden = off;
-    $('reminder-row').classList.toggle('single', off);
+    var rows = reminderRows();
+    $('add-reminder-btn').disabled = rows.length >= 5;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].querySelector('.reminder-value').setAttribute('aria-label', 'Reminder ' + (i + 1) + ' value');
+      rows[i].querySelector('.reminder-unit').setAttribute('aria-label', 'Reminder ' + (i + 1) + ' unit');
+      rows[i].querySelector('.reminder-remove').setAttribute('aria-label', 'Remove reminder ' + (i + 1));
+    }
   }
 
   $('all-day').addEventListener('change', syncAllDayUI);
@@ -425,11 +432,14 @@
   });
   $('recur-end').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
   $('recur-count').addEventListener('change', updateKeptHint);
-  $('reminder-toggle').addEventListener('change', function () { syncReminderUI(); updateKeptHint(); });
-  /* The "kept as-is" hint names only what the current controls will actually
-   * preserve, so refresh it whenever one of them changes. */
-  $('reminder-value').addEventListener('change', updateKeptHint);
-  $('reminder-unit').addEventListener('change', updateKeptHint);
+  /* Delegated so every dynamically added reminder row refreshes the hint. */
+  $('reminder-rows').addEventListener('input', updateKeptHint);
+  $('reminder-rows').addEventListener('change', updateKeptHint);
+  $('add-reminder-btn').addEventListener('click', function () {
+    var row = addReminderRow();
+    updateKeptHint();
+    if (row) row.querySelector('.reminder-value').focus();
+  });
 
   /* Keep the end after the start when the start moves past it: shift the end by
    * the duration entered before the change (min 1 hour). The previous start
@@ -724,19 +734,18 @@
       opts.rrule = parts.join(';');
     }
 
-    var on = $('reminder-toggle').value === 'on';
-    if (on) {
-      var n = parseInt($('reminder-value').value, 10);
-      if (!n || n < 1) {
-        errors['reminder-value'] = 'Pick how long before the event to remind you (1 or more).';
+    var reminders = reminderRows();
+    var alarms = [];
+    for (var ri = 0; ri < reminders.length; ri++) {
+      var valueInput = reminders[ri].querySelector('.reminder-value');
+      var n = valueInput.valueAsNumber;
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 999) {
+        errors[valueInput.id] = 'Reminder ' + (ri + 1) + ': pick a whole number from 1 to 999.';
       } else {
-        var unit = $('reminder-unit').value; /* minutes | hours | days */
-        var dur = unit === 'days' ? 'P' + n + 'D'
-          : unit === 'hours' ? 'PT' + n + 'H'
-          : 'PT' + n + 'M';
-        opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
+        alarms.push({ trigger: triggerFromParts({ value: n, unit: reminders[ri].querySelector('.reminder-unit').value }) });
       }
     }
+    if (alarms.length) opts.alarms = alarms;
 
     var orgName = $('organizer-name').value.trim();
     var orgEmail = $('organizer-email').value.trim();
@@ -901,23 +910,65 @@
    * strings all fail. Numeric minute triggers (-10) equal the '-PT10M' the
    * form writes, so they count as representable when integral. */
   function triggerRoundTrips(trigger, parts) {
-    if (!parts || !(parts.value >= 1)) return false;
+    if (!parts || !Number.isInteger(parts.value) || parts.value < 1 || parts.value > 999) return false;
     if (typeof trigger === 'number') return Number.isInteger(trigger) && trigger < 0;
-    return String(trigger == null ? '' : trigger).trim() === triggerFromParts(parts);
+    return String(trigger == null ? '' : trigger) === triggerFromParts(parts);
   }
 
-  /* The single alarm the reminder control can represent, as { value, unit },
-   * or null when the array is not fully representable (more than one alarm, a
-   * non-DISPLAY action, a description, or a trigger the control cannot show
-   * back exactly). */
+  /* Up to five DISPLAY alarms without descriptions, returned as row parts.
+   * Every trigger must round-trip exactly; otherwise the entire array is kept
+   * as-is rather than loading a partial, potentially destructive edit. */
   function simpleAlarm(alarms) {
-    if (!Array.isArray(alarms) || alarms.length !== 1) return null;
-    var a = alarms[0];
-    if (!a) return null;
-    var action = a.action ? String(a.action).toUpperCase() : 'DISPLAY';
-    if (action !== 'DISPLAY' || a.description) return null;
-    var parts = parseTrigger(a.trigger);
-    return triggerRoundTrips(a.trigger, parts) ? parts : null;
+    if (!Array.isArray(alarms) || alarms.length > 5) return null;
+    var rows = [];
+    for (var i = 0; i < alarms.length; i++) {
+      var a = alarms[i];
+      if (!a) return null;
+      var action = a.action ? String(a.action).toUpperCase() : 'DISPLAY';
+      if (action !== 'DISPLAY' || a.description != null) return null;
+      var parts = parseTrigger(a.trigger);
+      if (!triggerRoundTrips(a.trigger, parts)) return null;
+      rows.push(parts);
+    }
+    return rows;
+  }
+
+  var reminderRowSeq = 0;
+
+  function addReminderRow(parts) {
+    if (reminderRows().length >= 5) return null;
+    parts = parts || { value: 10, unit: 'minutes' };
+    var row = document.createElement('div');
+    row.className = 'reminder-row';
+    var valueField = attendeeField('number', 'reminder-value', '', 'Reminder value', parts.value, 'reminder-value-' + (++reminderRowSeq));
+    var input = valueField.querySelector('input');
+    input.min = '1';
+    input.max = '999';
+    input.step = '1';
+    row.appendChild(valueField);
+    row.appendChild(attendeeSelect('reminder-unit', 'Reminder unit', [
+      ['minutes', 'Minutes'], ['hours', 'Hours'], ['days', 'Days']
+    ], parts.unit, 'minutes'));
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn ghost reminder-remove';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', function () {
+      row.parentNode.removeChild(row);
+      syncReminderUI();
+      updateKeptHint();
+      $('add-reminder-btn').focus();
+    });
+    row.appendChild(remove);
+    $('reminder-rows').appendChild(row);
+    syncReminderUI();
+    return row;
+  }
+
+  function setReminders(rows) {
+    $('reminder-rows').textContent = '';
+    (rows || []).forEach(addReminderRow);
+    syncReminderUI();
   }
 
   var ATTENDEE_ROLES = [
@@ -1075,13 +1126,7 @@
     setByday(rule && rule.byday);
     syncRecurUI();
 
-    var alarm = simpleAlarm(ev.alarms);
-    $('reminder-toggle').value = alarm ? 'on' : 'off';
-    if (alarm) {
-      $('reminder-value').value = alarm.value;
-      $('reminder-unit').value = alarm.unit;
-    }
-    syncReminderUI();
+    setReminders(simpleAlarm(ev.alarms));
 
     setOrganizer(ev.organizer);
     setAttendees(ev.attendees);
@@ -1342,7 +1387,7 @@
     if (editingEvent && editingKept.rrule && $('recur-freq').value === 'NONE') {
       parts.push('advanced recurrence');
     }
-    if (editingEvent && editingKept.alarms && $('reminder-toggle').value === 'off') {
+    if (editingEvent && editingKept.alarms && reminderRows().length === 0) {
       parts.push('extra reminders');
     }
     return parts;
@@ -1515,14 +1560,14 @@
     }
   });
 
-  /* Snapshot every control in the event form (plus attendee rows) so loading
+  /* Snapshot every control in the event form (plus attendee/reminder rows) so loading
    * samples can be undone back to the visitor's work. */
   function snapshotForm() {
     var values = [];
     var fields = $('event-form').querySelectorAll('input, select, textarea');
     for (var i = 0; i < fields.length; i++) {
       var el = fields[i];
-      if (!el.id || el.id === 'timezone-filter' || (el.closest && el.closest('#attendee-list'))) continue;
+      if (!el.id || el.id === 'timezone-filter' || (el.closest && el.closest('#attendee-list, #reminder-rows'))) continue;
       values.push({
         id: el.id,
         checked: el.type === 'checkbox' ? el.checked : null,
@@ -1544,6 +1589,9 @@
     return {
       values: values,
       attendees: attendees,
+      reminders: Array.prototype.map.call(reminderRows(), function (row) {
+        return { value: row.querySelector('.reminder-value').value, unit: row.querySelector('.reminder-unit').value };
+      }),
       /* Edit context travels with the draft so a samples undo can put the
        * visitor back into the same Update session, not a silent Add. */
       editingEvent: editingEvent,
@@ -1560,6 +1608,7 @@
     var box = $('attendee-list');
     box.textContent = '';
     snap.attendees.forEach(addAttendeeRow);
+    setReminders(snap.reminders);
     snap.values.forEach(function (rec) {
       var el = $(rec.id);
       if (!el) return;
@@ -1625,7 +1674,7 @@
           if (opts.rrule == null && editingKept.rrule && $('recur-freq').value === 'NONE') {
             opts.rrule = editingKept.rrule;
           }
-          if (opts.alarms == null && editingKept.alarms && $('reminder-toggle').value === 'off') {
+          if (opts.alarms == null && editingKept.alarms && reminderRows().length === 0) {
             opts.alarms = editingKept.alarms.map(copyPlain);
           }
           updated = cal.updateEvent(index, opts);
