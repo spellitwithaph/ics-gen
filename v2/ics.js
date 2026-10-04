@@ -152,19 +152,33 @@
     return d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate());
   }
 
+  /* Building an Intl.DateTimeFormat is expensive and offset sampling calls
+   * zoneParts thousands of times per render, so one formatter is cached per
+   * zone for the lifetime of the page. */
+  var zoneFormatterCache = Object.create(null);
+
+  function zoneFormatter(timeZone) {
+    var formatter = zoneFormatterCache[timeZone];
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+      });
+      zoneFormatterCache[timeZone] = formatter;
+    }
+    return formatter;
+  }
+
   /* Wall-clock components a Date shows in an IANA zone, as numbers. */
   function zoneParts(date, timeZone) {
     var parts = {};
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hourCycle: 'h23'
-    })
+    zoneFormatter(timeZone)
       .formatToParts(date)
       .forEach(function (p) {
         if (p.type !== 'literal') parts[p.type] = Number(p.value);
@@ -194,6 +208,262 @@
       ts += delta;
     }
     return new Date(ts);
+  }
+
+  /* ---------- VTIMEZONE (best-effort) ---------- */
+
+  var MS_PER_DAY = 86400000;
+
+  /*
+   * UTC offset (minutes east of UTC) a zone shows at the given instant. A
+   * long-offset formatter reports the offset directly and its format() is
+   * several times faster than reconstructing wall-clock parts; transition
+   * sampling issues thousands of these probes per render, so the formatter is
+   * cached per zone and the offset text is parsed rather than derived.
+   *
+   * 'longOffset' is newer than the rest of this module's Intl use. A zone whose
+   * engine cannot report it (the constructor or format() throws a RangeError,
+   * or the option is silently ignored) is marked and every later probe uses the
+   * wall-clock diff fallback below, so toString() never throws over an offset.
+   */
+  var zoneOffsetFormatterCache = Object.create(null);
+  var zoneOffsetFallbackZones = Object.create(null);
+
+  function zoneOffsetFormatter(timeZone) {
+    var formatter = zoneOffsetFormatterCache[timeZone];
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat('en-US', { timeZone: timeZone, timeZoneName: 'longOffset' });
+      zoneOffsetFormatterCache[timeZone] = formatter;
+    }
+    return formatter;
+  }
+
+  /* Fallback offset probe: how far the zone's local clock sits from UTC at
+   * `ts`, rebuilt from the cached wall-clock-parts formatter. Exact for any
+   * zone whose parts Intl can produce; only slower than the long-offset path. */
+  function zoneOffsetMinutesFromParts(ts, timeZone) {
+    var seconds = Math.floor(ts / 1000) * 1000;
+    var p = zoneParts(new Date(seconds), timeZone);
+    var asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    return Math.round((asUTC - seconds) / 60000);
+  }
+
+  function zoneOffsetMinutes(ts, timeZone) {
+    if (!zoneOffsetFallbackZones[timeZone]) {
+      try {
+        var text = zoneOffsetFormatter(timeZone).format(new Date(ts));
+        var m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(text);
+        if (m) {
+          var mins = Number(m[2]) * 60 + Number(m[3] || 0);
+          return m[1] === '-' ? -mins : mins;
+        }
+        if (/\bGMT\b/.test(text)) return 0; /* a bare 'GMT' means UTC */
+        /* No offset came back (older engines ignore an unsupported
+         * timeZoneName), so stop probing this zone entirely. */
+        zoneOffsetFallbackZones[timeZone] = true;
+      } catch (e) {
+        zoneOffsetFallbackZones[timeZone] = true;
+      }
+    }
+    return zoneOffsetMinutesFromParts(ts, timeZone);
+  }
+
+  /* Signed ±HHMM offset token used by TZOFFSETFROM/TZOFFSETTO. */
+  function formatOffsetMinutes(mins) {
+    var sign = mins < 0 ? '-' : '+';
+    var abs = Math.abs(Math.round(mins));
+    return sign + pad2(Math.floor(abs / 60)) + pad2(abs % 60);
+  }
+
+  /* Intl's short zone name (e.g. EST/EDT) — optional, omitted when unavailable. */
+  var zoneNameFormatterCache = Object.create(null);
+
+  function zoneNameFormatter(timeZone) {
+    var formatter = zoneNameFormatterCache[timeZone];
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat('en-US', { timeZone: timeZone, timeZoneName: 'short' });
+      zoneNameFormatterCache[timeZone] = formatter;
+    }
+    return formatter;
+  }
+
+  function zoneShortName(ts, timeZone) {
+    try {
+      var parts = zoneNameFormatter(timeZone).formatToParts(new Date(ts));
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].type === 'timeZoneName') return parts[i].value;
+      }
+    } catch (e) { /* zone names are best-effort only */ }
+    return null;
+  }
+
+  /*
+   * Best-effort approximation: instead of shipping a tzdata table, sample the
+   * zone's UTC offset at ~15-day steps across the requested year, then bisect
+   * each detected change down to second precision. Onset instants are therefore
+   * second-accurate (whole-second tzdata transitions land exactly), and exotic
+   * zones with many offsets are reduced to the two longest-lived ones — enough
+   * for a strict/offline client to resolve the TZID, not a byte-exact tzdata
+   * dump. Results are cached per zone+year because a zone's rules for a given
+   * year never change within a page session; without this, every render that
+   * rebuilds the preview would re-sample every zone from scratch.
+   */
+  var zoneTransitionsCache = Object.create(null);
+
+  function zoneTransitions(timeZone, year) {
+    var cacheKey = timeZone + '|' + year;
+    var cached = zoneTransitionsCache[cacheKey];
+    if (cached) return cached;
+    var start = Date.UTC(year, 0, 1);
+    var end = Date.UTC(year + 1, 0, 1);
+    var step = 15 * MS_PER_DAY;
+    var transitions = [];
+    var prevT = start;
+    var prevOff = zoneOffsetMinutes(start, timeZone);
+    var t = start;
+    while (t < end) {
+      t = Math.min(t + step, end);
+      var off = zoneOffsetMinutes(t, timeZone);
+      if (off !== prevOff) {
+        var lo = prevT;
+        var hi = t;
+        while (hi - lo > 1000) {
+          var mid = Math.floor((lo + hi) / 2 / 1000) * 1000;
+          if (zoneOffsetMinutes(mid, timeZone) === prevOff) lo = mid;
+          else hi = mid;
+        }
+        transitions.push({ at: hi, from: prevOff, to: off });
+        prevOff = off;
+      }
+      prevT = t;
+    }
+    zoneTransitionsCache[cacheKey] = transitions;
+    return transitions;
+  }
+
+  /* One VTIMEZONE block for `timeZone`. Every distinct year that actually has
+   * an event in this zone is mandatory — dropping one silently mis-resolves
+   * that year's events, so no contiguous-range sampling is used. One
+   * recurrence-margin year past the latest event is added only when it still
+   * fits the budget, so near-term recurrences keep resolving.
+   *
+   * MAX_VTIMEZONE_YEARS bounds the block size. A pathological calendar with
+   * more distinct event years than the budget keeps the first 39 years
+   * chronologically plus the LAST one, so the newest events stay correct. */
+  var MAX_VTIMEZONE_YEARS = 40;
+
+  function vtimezoneLines(timeZone, years) {
+    var tzid = assertTimeZone(timeZone);
+    var candidates = (Array.isArray(years) ? years : [years]).filter(function (y) {
+      return typeof y === 'number' && isFinite(y);
+    });
+    if (!candidates.length) candidates = [new Date().getUTCFullYear()];
+
+    /* Distinct event years, in chronological order. */
+    var eventYears = [];
+    candidates.forEach(function (y) {
+      var year = Math.floor(y);
+      if (eventYears.indexOf(year) === -1) eventYears.push(year);
+    });
+    eventYears.sort(function (a, b) { return a - b; });
+
+    var sampled;
+    if (eventYears.length > MAX_VTIMEZONE_YEARS) {
+      /* Pathological: over budget, so keep the earliest 39 years plus the
+       * newest one — the latest events matter most and must stay correct. */
+      sampled = eventYears.slice(0, MAX_VTIMEZONE_YEARS - 1)
+        .concat(eventYears[eventYears.length - 1]);
+    } else {
+      sampled = eventYears.slice();
+      if (sampled.length < MAX_VTIMEZONE_YEARS) sampled.push(sampled[sampled.length - 1] + 1);
+    }
+
+    var transitions = [];
+    var byYear = {};
+    sampled.forEach(function (year) {
+      var yearTransitions = zoneTransitions(tzid, year);
+      byYear[year] = yearTransitions;
+      transitions = transitions.concat(yearTransitions);
+    });
+
+    var lines = ['BEGIN:VTIMEZONE', 'TZID:' + escapeText(tzid)];
+
+    if (!transitions.length) {
+      /* A fixed-offset zone: one STANDARD component with equal offsets. */
+      var onlyStart = Date.UTC(sampled[0], 0, 1);
+      var onlyOffset = zoneOffsetMinutes(onlyStart, tzid);
+      lines.push('BEGIN:STANDARD');
+      lines.push('DTSTART:19700101T000000');
+      lines.push('TZOFFSETFROM:' + formatOffsetMinutes(onlyOffset));
+      lines.push('TZOFFSETTO:' + formatOffsetMinutes(onlyOffset));
+      var onlyName = zoneShortName(onlyStart, tzid);
+      if (onlyName) lines.push('TZNAME:' + escapeText(onlyName));
+      lines.push('END:STANDARD');
+      lines.push('END:VTIMEZONE');
+      return lines;
+    }
+
+    /* Rank distinct offsets by how long the zone spends in them across the
+     * sampled window, keep the two longest-lived ones, and label the LOWER
+     * offset STANDARD and the higher one DAYLIGHT — correct in both hemispheres
+     * (Sydney, Dublin) as well as for northern zones. */
+    var windowStart = Date.UTC(sampled[0], 0, 1);
+    var windowEnd = Date.UTC(sampled[sampled.length - 1] + 1, 0, 1);
+    var durations = {};
+    var cursor = windowStart;
+    var cursorOffset = zoneOffsetMinutes(windowStart, tzid);
+    transitions.forEach(function (tr) {
+      durations[cursorOffset] = (durations[cursorOffset] || 0) + (tr.at - cursor);
+      cursor = tr.at;
+      cursorOffset = tr.to;
+    });
+    durations[cursorOffset] = (durations[cursorOffset] || 0) + (windowEnd - cursor);
+
+    var ranked = Object.keys(durations).map(Number).sort(function (a, b) {
+      return durations[b] - durations[a];
+    }).slice(0, 2);
+    var standardOffset = Math.min.apply(null, ranked);
+    var daylightOffset = ranked.length > 1 ? Math.max.apply(null, ranked) : null;
+
+    function transitionInto(offset, yearTransitions) {
+      for (var j = 0; j < yearTransitions.length; j++) {
+        if (yearTransitions[j].to === offset) return yearTransitions[j];
+      }
+      return null;
+    }
+
+    function emit(type, transition, toOffset) {
+      lines.push('BEGIN:' + type);
+      /* DTSTART is the wall-clock of the onset in the TZOFFSETFROM frame
+       * (tzdata convention) and is a local time, so it carries no trailing Z. */
+      lines.push('DTSTART:' + formatDateTimeUTC(
+        new Date(transition.at + transition.from * 60000)
+      ).slice(0, -1));
+      lines.push('TZOFFSETFROM:' + formatOffsetMinutes(transition.from));
+      lines.push('TZOFFSETTO:' + formatOffsetMinutes(toOffset));
+      var name = zoneShortName(transition.at, tzid);
+      if (name) lines.push('TZNAME:' + escapeText(name));
+      lines.push('END:' + type);
+    }
+
+    /* One STANDARD/DAYLIGHT pair per sampled year that has a transition into
+     * that offset, ordered chronologically within the year; multiple pairs are
+     * valid and resolved last-onset-wins. */
+    sampled.forEach(function (year) {
+      var yearTransitions = byYear[year] || [];
+      var picks = [];
+      if (daylightOffset != null) {
+        var daylightTr = transitionInto(daylightOffset, yearTransitions);
+        if (daylightTr) picks.push({ type: 'DAYLIGHT', tr: daylightTr, to: daylightOffset });
+      }
+      var standardTr = transitionInto(standardOffset, yearTransitions);
+      if (standardTr) picks.push({ type: 'STANDARD', tr: standardTr, to: standardOffset });
+      picks.sort(function (a, b) { return a.tr.at - b.tr.at; });
+      picks.forEach(function (pick) { emit(pick.type, pick.tr, pick.to); });
+    });
+
+    lines.push('END:VTIMEZONE');
+    return lines;
   }
 
   function isDateParts(v) {
@@ -434,10 +704,14 @@
   /*
    * Calendar — holds any number of events and renders one .ics document.
    * options: { name } sets X-WR-CALNAME (the calendar title Google/Apple show).
+   * includeVtimezone (default false) emits a best-effort VTIMEZONE block for
+   * every unique event TZID before the VEVENTs, which strict/offline clients
+   * need to resolve a TZID without consulting their own tzdata.
    */
   function Calendar(options) {
     this.options = options || {};
     this.events = [];
+    this.includeVtimezone = !!this.options.includeVtimezone;
   }
 
   Calendar.prototype.addEvent = function (options) {
@@ -489,6 +763,25 @@
     ];
     if (this.options.name) lines.push('X-WR-CALNAME:' + escapeText(this.options.name));
     if (this.options.desc) lines.push('X-WR-CALDESC:' + escapeText(this.options.desc));
+    if (this.includeVtimezone) {
+      /* One VTIMEZONE per unique TZID, spanning every year its events touch. */
+      var zoneYears = {};
+      var zoneOrder = [];
+      for (var v = 0; v < this.events.length; v++) {
+        var zoneEvent = this.events[v];
+        if (zoneEvent.allDay) continue;
+        var zone = zoneEvent.options && zoneEvent.options.timezone;
+        if (!zone || String(zone) === 'UTC') continue;
+        zone = String(zone);
+        if (!zoneYears[zone]) { zoneYears[zone] = []; zoneOrder.push(zone); }
+        zoneYears[zone].push(zoneEvent.start instanceof Date
+          ? zoneEvent.start.getUTCFullYear()
+          : new Date().getUTCFullYear());
+      }
+      for (var zi = 0; zi < zoneOrder.length; zi++) {
+        lines.push.apply(lines, vtimezoneLines(zoneOrder[zi], zoneYears[zoneOrder[zi]]));
+      }
+    }
     for (var i = 0; i < this.events.length; i++) {
       lines.push.apply(lines, this.events[i].toLines());
     }

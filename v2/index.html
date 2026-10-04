@@ -88,6 +88,11 @@
 
       <details id="import-box">
         <summary>Import an .ics file (drop or paste text)</summary>
+        <fieldset class="import-mode">
+          <legend>Import mode</legend>
+          <label class="check"><input id="import-mode-append" type="radio" name="import-mode" value="append" checked> Add to my list</label>
+          <label class="check"><input id="import-mode-replace" type="radio" name="import-mode" value="replace"> Replace my list</label>
+        </fieldset>
         <label id="drop-zone" class="drop-zone" for="import-file">
           <strong>Drop an .ics file here</strong>
           <span>or click to choose a file — nothing is uploaded</span>
@@ -100,10 +105,12 @@
         <div class="form-actions">
           <button id="import-text-btn" class="btn" type="button">Import pasted text</button>
         </div>
-        <p class="hint">Imported events are added to the list and preview; a
-        single-event import also fills in the event form.</p>
+        <p class="hint">Imported events go into the list and preview — Add to
+        keep your current list, Replace to swap it. A single-event import also
+        fills in the event form.</p>
       </details>
       <p id="import-status" class="status-msg" role="status"></p>
+      <div id="import-notes" hidden></div>
 
       <form id="event-form" novalidate>
         <div class="field">
@@ -306,6 +313,8 @@
       <ul id="event-list">
         <li class="empty">No events yet — add your first event with the form, or load the samples.</li>
       </ul>
+
+      <label class="check vtimezone-toggle"><input id="vtimezone-toggle" type="checkbox"> Include VTIMEZONE blocks (best for strict/offline calendar clients)</label>
 
       <details id="preview-box" open>
         <summary>Preview: generated .ics text</summary>

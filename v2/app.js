@@ -1216,6 +1216,69 @@
     return bits.join(' · ');
   }
 
+  /* ---------- Google Calendar link ---------- */
+
+  function gcalTimestamp(date) {
+    return date.getUTCFullYear() + pad2(date.getUTCMonth() + 1) + pad2(date.getUTCDate()) +
+      'T' + pad2(date.getUTCHours()) + pad2(date.getUTCMinutes()) + pad2(date.getUTCSeconds()) + 'Z';
+  }
+
+  function gcalDate(parts) {
+    return parts.year + pad2(parts.month) + pad2(parts.day);
+  }
+
+  function datePartsOf(v) {
+    if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
+    if (v instanceof Date) {
+      return { year: v.getUTCFullYear(), month: v.getUTCMonth() + 1, day: v.getUTCDate() };
+    }
+    return null;
+  }
+
+  function nextDateParts(parts) {
+    var d = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + 1));
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+  }
+
+  /* Build the Google Calendar "add event" template URL for one list item.
+   * Google wants UTC instants for timed events (with ctz naming the display
+   * zone) and an exclusive end date for all-day events. Every value is
+   * percent-encoded, and the caller only ever sets href/textContent. */
+  function googleCalendarUrl(ev) {
+    var o = ev.options;
+    var params = [['action', 'TEMPLATE'], ['text', String(o.title || '')]];
+
+    var dates;
+    if (ev.allDay) {
+      var startParts = datePartsOf(ev.start);
+      var endParts = datePartsOf(ev.end) || (startParts ? nextDateParts(startParts) : null);
+      dates = (startParts ? gcalDate(startParts) : '') + '/' + (endParts ? gcalDate(endParts) : '');
+    } else {
+      var start = ev.start;
+      var end = ev.end instanceof Date ? ev.end : null;
+      if (!end) {
+        var minutes = Number(o.durationMinutes) > 0 ? Number(o.durationMinutes) : 0;
+        end = new Date(start.getTime() + minutes * 60000);
+      }
+      dates = gcalTimestamp(start) + '/' + gcalTimestamp(end);
+    }
+    params.push(['dates', dates]);
+
+    var details = '';
+    if (o.description && o.url) details = o.description + '\n' + o.url;
+    else if (o.description) details = o.description;
+    else if (o.url) details = o.url;
+    if (details) params.push(['details', details]);
+
+    if (o.location) params.push(['location', String(o.location)]);
+    if (o.timezone && o.timezone !== 'UTC') params.push(['ctz', String(o.timezone)]);
+    if (o.rrule) params.push(['recur', 'RRULE:' + String(o.rrule).replace(/^RRULE:/i, '')]);
+
+    return 'https://calendar.google.com/calendar/render?' + params.map(function (p) {
+      return p[0] + '=' + encodeURIComponent(p[1]);
+    }).join('&');
+  }
+
   /* Sort key for the list view: an all-day event sorts by its calendar day
    * (UTC midnight), a timed event by its instant. */
   function eventSortTime(ev) {
@@ -1291,6 +1354,15 @@
           setStatus('Duplicated "' + ev.options.title + '".');
         });
 
+        var gcal = document.createElement('a');
+        gcal.className = 'btn ghost gcal-link';
+        gcal.href = googleCalendarUrl(ev);
+        gcal.target = '_blank';
+        gcal.rel = 'noopener noreferrer';
+        gcal.textContent = 'Google Calendar';
+        gcal.title = 'Open in Google Calendar';
+        gcal.setAttribute('aria-label', 'Open ' + ev.options.title + ' in Google Calendar (opens in a new tab)');
+
         var del = document.createElement('button');
         del.type = 'button';
         del.className = 'btn ghost';
@@ -1315,6 +1387,7 @@
         li.appendChild(info);
         li.appendChild(edit);
         li.appendChild(dup);
+        li.appendChild(gcal);
         li.appendChild(del);
         list.appendChild(li);
       });
@@ -1490,7 +1563,10 @@
   /* Refocus after the toast goes away only when focus was inside it, and prefer
    * the button that triggered the action (if it still exists). */
   function refocusAfterUndo(trigger) {
-    if (trigger && trigger.isConnected) { trigger.focus(); return; }
+    /* offsetParent is null for a disconnected node and for a hidden one (a
+     * control inside a collapsed <details>), so an invisible trigger falls
+     * through to the title instead of losing focus. */
+    if (trigger && trigger.isConnected && trigger.offsetParent !== null) { trigger.focus(); return; }
     var title = $('title');
     if (title) title.focus();
   }
@@ -1732,6 +1808,14 @@
     cal.options.name = $('calendar-name').value.trim();
   }
 
+  /* Put the calendar-name input and the library option back exactly as they
+   * were before an import attempt may have changed them. */
+  function restoreCalendarName(snap) {
+    if (!snap) return;
+    $('calendar-name').value = snap.value;
+    cal.options.name = snap.name;
+  }
+
   /* Every keystroke would rebuild the list, preview and (when unlocked) the
    * save, so the input handler is debounced; change/blur flushes immediately. */
   var calendarNameTimer = null;
@@ -1893,6 +1977,36 @@
     el.classList.toggle('error', !!isError);
   }
 
+  /* Import notes: parser warnings are informational, not failures, so they live
+   * in their own collapsed box under the status line. The box is rebuilt on
+   * every import attempt and hidden when there is nothing to report. */
+  function renderImportNotes(warnings) {
+    var host = $('import-notes');
+    host.textContent = '';
+    if (!warnings || !warnings.length) { host.hidden = true; return; }
+
+    var details = document.createElement('details');
+    details.className = 'import-notes';
+    var summary = document.createElement('summary');
+    summary.textContent = warnings.length + ' import note' + (warnings.length === 1 ? '' : 's');
+    details.appendChild(summary);
+
+    var ul = document.createElement('ul');
+    warnings.slice(0, 20).forEach(function (warning) {
+      var li = document.createElement('li');
+      li.textContent = String(warning);
+      ul.appendChild(li);
+    });
+    if (warnings.length > 20) {
+      var more = document.createElement('li');
+      more.textContent = '+' + (warnings.length - 20) + ' more';
+      ul.appendChild(more);
+    }
+    details.appendChild(ul);
+    host.appendChild(details);
+    host.hidden = false;
+  }
+
   function looksLikeEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '')); }
   function looksLikeHttpUrl(s) { return /^https?:\/\//i.test(String(s || '')); }
 
@@ -1942,6 +2056,8 @@
   }
 
   function applyImport(text, sourceLabel) {
+    /* Every attempt replaces the previous notes, even one that fails early. */
+    renderImportNotes([]);
     if (!text || !text.trim()) { setImportStatus('Nothing to import — the text was empty.', true); return; }
     if (text.length > MAX_IMPORT_CHARS) { setImportStatus('That text is too large to import (over 2 MB).', true); return; }
 
@@ -1952,10 +2068,15 @@
       setImportStatus(err.message, true);
       return;
     }
+    renderImportNotes(result.warnings);
     if (!result.events.length) {
       setImportStatus('No events found in ' + (sourceLabel || 'that text') + '.', true);
       return;
     }
+
+    /* Capture the calendar name before the X-WR-CALNAME auto-fill below may
+     * overwrite it, so a rolled-back replace and its undo can put it back. */
+    var previousCalendarName = { value: $('calendar-name').value, name: cal.options.name };
 
     /* An imported calendar name fills the input only while it still shows the
      * built-in default; blank or whitespace names are intentional and stay
@@ -1972,6 +2093,19 @@
 
     var added = 0;
     var hitCap = false;
+    /* Replace mode clears the list only once at least one imported event is
+     * about to land: a failed replace must leave the existing list intact, and
+     * the snapshot is the undo path back to both the list and the form. */
+    var replaceMode = $('import-mode-replace').checked;
+    var previousEvents = replaceMode ? cal.events.slice() : null;
+    var previousForm = replaceMode ? snapshotForm() : null;
+    if (replaceMode) {
+      /* Leave edit mode before the swap so a stale Update target cannot outlive
+       * the list it pointed at; the snapshot above already captured the edit
+       * context, so Undo (and the zero-added rollback) restores it. */
+      exitEditMode();
+      cal.clear();
+    }
     result.events.forEach(function (ev) {
       if (cal.events.length >= MAX_EVENTS) { hitCap = true; return; }
       /* Skip an event only if ics.js rejects it outright; the count below
@@ -1982,12 +2116,21 @@
       } catch (err) { /* ignore and continue */ }
     });
 
+    if (replaceMode && added === 0) {
+      /* A replace that imported nothing is a failure: put the previous list,
+       * form and calendar name back before the failure status below. */
+      cal.events = previousEvents;
+      restoreForm(previousForm);
+      restoreEditState(previousForm);
+      restoreCalendarName(previousCalendarName);
+      render();
+    }
+
     if (added) {
-      /* Importing mutated the list, so it supersedes any pending undo. Dismiss
-       * here (not before the loop) so an import that adds nothing leaves a
-       * still-valid undo intact. */
+      /* Importing mutated the list, so it supersedes any pending undo. In
+       * replace mode the toast below becomes the undo, so leave it in place. */
       unlockStorage();
-      dismissUndoToast();
+      if (!replaceMode) dismissUndoToast();
       render();
       /* Collapse the panel so the (now populated) form is pulled into view. */
       $('import-box').open = false;
@@ -2000,10 +2143,30 @@
         populateForm(result.events[0]);
         $('title').focus();
       }
+      if (replaceMode) {
+        /* The import panel collapses on success, so point Undo at the summary
+         * (still visible) instead of the now-hidden paste button. */
+        var importBox = $('import-box');
+        var importSummary = importBox && importBox.querySelector('summary');
+        var undoTrigger = importSummary && importSummary.offsetParent !== null
+          ? importSummary : $('import-text-btn');
+        showUndoToast(
+          'Replaced ' + previousEvents.length + ' ' +
+            (previousEvents.length === 1 ? 'event' : 'events') + ' with ' + added + ' imported.',
+          function () {
+            cal.events = previousEvents;
+            restoreForm(previousForm);
+            restoreEditState(previousForm);
+            restoreCalendarName(previousCalendarName);
+          },
+          undoTrigger
+        );
+      }
     }
 
     var msg = 'Imported ' + added + ' of ' + result.events.length +
       ' event' + (result.events.length === 1 ? '' : 's');
+    if (replaceMode && added > 0) msg += ' (replaced ' + previousEvents.length + ')';
     if (sourceLabel) msg += ' from ' + sourceLabel;
     setImportStatus(msg + '.', added === 0);
     if (hitCap) setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
@@ -2014,11 +2177,16 @@
     if (!file) return;
     var name = String(file.name || '');
     if (file.size > MAX_IMPORT_CHARS) {
+      /* A file-level rejection must not leave the previous import's notes up. */
+      renderImportNotes([]);
       setImportStatus('"' + name + '" is larger than 2 MB — refusing to parse it.', true);
       return;
     }
     function done(text) { applyImport(text, '"' + name + '"'); }
-    function fail() { setImportStatus('Could not read "' + name + '".', true); }
+    function fail() {
+      renderImportNotes([]);
+      setImportStatus('Could not read "' + name + '".', true);
+    }
     if (typeof file.text === 'function') {
       file.text().then(done, fail);
     } else {
@@ -2113,6 +2281,29 @@
   function hideSaveWarning() {
     $('save-warning').hidden = true;
   }
+
+  /* The VTIMEZONE preference is stored in its own key: the v3 events envelope
+   * (and its version) must not change just to remember a preview option. */
+  var VTIMEZONE_KEY = 'ics-gen-v2-vtimezone';
+
+  function loadVtimezonePref() {
+    var on = false;
+    try { on = localStorage.getItem(VTIMEZONE_KEY) === '1'; } catch (e) { on = false; }
+    cal.includeVtimezone = on;
+    $('vtimezone-toggle').checked = on;
+  }
+
+  function saveVtimezonePref() {
+    try {
+      localStorage.setItem(VTIMEZONE_KEY, cal.includeVtimezone ? '1' : '0');
+    } catch (e) { /* storage may be unavailable; the toggle still works this session */ }
+  }
+
+  $('vtimezone-toggle').addEventListener('change', function () {
+    cal.includeVtimezone = $('vtimezone-toggle').checked;
+    saveVtimezonePref();
+    render();
+  });
 
   function serializeDateValue(v) {
     if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
@@ -2227,6 +2418,7 @@
   /* ---------- init ---------- */
 
   syncCalendarName();
+  loadVtimezonePref();
   defaultFormDates();
   populateTimeZones();
   syncAllDayUI();

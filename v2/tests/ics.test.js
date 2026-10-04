@@ -10,6 +10,7 @@
 'use strict';
 
 var ICS = require('../ics.js');
+require('../ics-parse.js'); /* attaches ICS.parse for the VTIMEZONE round-trip test */
 
 var CRLF = '\r\n';
 
@@ -701,4 +702,345 @@ test('status is upper-cased and categories are escaped and comma-joined', functi
   );
   assert.includes(text, 'STATUS:TENTATIVE');
   assert.includes(text, 'CATEGORIES:Work\\, Big,Meeting');
+});
+
+/* ---------- VTIMEZONE emission (opt-in) ---------- */
+
+test('VTIMEZONE is off by default', function () {
+  var cal = calendarWith({
+    title: 'NY',
+    start: new Date('2026-07-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'America/New_York'
+  });
+  assert.eq(cal.includeVtimezone, false);
+  var text = unfold(cal.toString());
+  assert.ok(text.indexOf('VTIMEZONE') === -1, 'no VTIMEZONE unless opted in');
+  assert.includes(text, 'DTSTART;TZID=America/New_York:20260715T100000');
+});
+
+test('VTIMEZONE constructor option enables emission', function () {
+  var cal = new ICS.Calendar({ includeVtimezone: true });
+  cal.addEvent({
+    title: 'NY',
+    start: new Date('2026-07-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'America/New_York'
+  });
+  assert.eq(cal.includeVtimezone, true);
+  assert.includes(unfold(cal.toString()), 'BEGIN:VTIMEZONE');
+});
+
+test('VTIMEZONE: New York emits STANDARD and DAYLIGHT with correct offsets before VEVENTs', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'NY',
+    start: new Date('2026-07-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'America/New_York'
+  });
+  cal.includeVtimezone = true;
+  var text = unfold(cal.toString());
+
+  assert.eq((text.match(/BEGIN:VTIMEZONE/g) || []).length, 1, 'exactly one VTIMEZONE');
+  assert.includes(text, 'TZID:America/New_York');
+  assert.includes(text, 'BEGIN:STANDARD');
+  assert.includes(text, 'BEGIN:DAYLIGHT');
+  /* America/New_York in 2026: EST is -0500, EDT is -0400. */
+  assert.includes(text, 'TZOFFSETFROM:-0500');
+  assert.includes(text, 'TZOFFSETTO:-0400');
+  assert.includes(text, 'TZOFFSETFROM:-0400');
+  assert.includes(text, 'TZOFFSETTO:-0500');
+  assert.ok(
+    text.indexOf('BEGIN:VTIMEZONE') < text.indexOf('BEGIN:VEVENT'),
+    'VTIMEZONE must precede the first VEVENT'
+  );
+  assert.ok(
+    text.indexOf('END:VTIMEZONE') < text.indexOf('BEGIN:VEVENT'),
+    'VTIMEZONE must be closed before the first VEVENT'
+  );
+});
+
+test('VTIMEZONE: two events in the same zone emit one block', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'Spring',
+    start: new Date('2026-04-15T14:00:00Z'),
+    durationMinutes: 30,
+    timezone: 'America/New_York'
+  });
+  cal.addEvent({
+    title: 'Fall',
+    start: new Date('2026-10-15T14:00:00Z'),
+    durationMinutes: 30,
+    timezone: 'America/New_York'
+  });
+  cal.includeVtimezone = true;
+  var text = unfold(cal.toString());
+  assert.eq((text.match(/BEGIN:VTIMEZONE/g) || []).length, 1);
+  assert.eq((text.match(/TZID:America\/New_York/g) || []).length, 1);
+});
+
+test('VTIMEZONE: UTC-only and all-day-only calendars emit none', function () {
+  var utc = new ICS.Calendar();
+  utc.addEvent({
+    title: 'UTC',
+    start: new Date('2026-07-15T14:00:00Z'),
+    durationMinutes: 30,
+    timezone: 'UTC'
+  });
+  utc.includeVtimezone = true;
+  assert.ok(unfold(utc.toString()).indexOf('VTIMEZONE') === -1, 'UTC needs no VTIMEZONE');
+
+  var allDay = new ICS.Calendar();
+  allDay.addEvent({ title: 'Holiday', start: { year: 2026, month: 7, day: 15 }, end: { year: 2026, month: 7, day: 16 } });
+  allDay.includeVtimezone = true;
+  assert.ok(unfold(allDay.toString()).indexOf('VTIMEZONE') === -1, 'all-day events carry no TZID');
+});
+
+test('VTIMEZONE: single-offset zone emits one STANDARD with equal FROM/TO', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'Tokyo',
+    start: new Date('2026-07-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'Asia/Tokyo'
+  });
+  cal.includeVtimezone = true;
+  var text = unfold(cal.toString());
+  assert.eq((text.match(/BEGIN:VTIMEZONE/g) || []).length, 1);
+  assert.eq((text.match(/BEGIN:STANDARD/g) || []).length, 1);
+  assert.ok(text.indexOf('BEGIN:DAYLIGHT') === -1, 'no DST component for a fixed-offset zone');
+  assert.includes(text, 'TZOFFSETFROM:+0900');
+  assert.includes(text, 'TZOFFSETTO:+0900');
+  assert.includes(text, 'DTSTART:19700101T000000');
+});
+
+test('VTIMEZONE: generated output still parses and keeps event instants', function () {
+  var start = new Date('2026-07-15T14:00:00Z');
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'NY', start: start, durationMinutes: 60, timezone: 'America/New_York' });
+  cal.addEvent({ title: 'UTC', start: new Date('2026-07-16T09:00:00Z'), durationMinutes: 30 });
+  cal.includeVtimezone = true;
+
+  var parsed = ICS.parse(cal.toString());
+  assert.eq(parsed.events.length, 2);
+  assert.eq(parsed.counts.vtimezone, 1);
+  assert.eq(parsed.events[0].start.getTime(), start.getTime());
+});
+
+/* ---------- VTIMEZONE observances (onset frame, sampling, labels) ---------- */
+
+/* Pull each STANDARD/DAYLIGHT observance out of an unfolded .ics document. */
+function vtimezoneComponents(text) {
+  var comps = [];
+  var current = null;
+  unfold(text).split('\n').forEach(function (line) {
+    if (line === 'BEGIN:STANDARD' || line === 'BEGIN:DAYLIGHT') {
+      current = { type: line.slice(6), props: {} };
+      comps.push(current);
+    } else if (current && line.indexOf('END:') === 0) {
+      current = null;
+    } else if (current) {
+      var at = line.indexOf(':');
+      if (at !== -1) current.props[line.slice(0, at)] = line.slice(at + 1);
+    }
+  });
+  return comps;
+}
+
+function parseOffsetToken(token) {
+  var m = /^([+-])(\d{2})(\d{2})$/.exec(token);
+  if (!m) throw new Error('bad offset token ' + token);
+  var mins = Number(m[2]) * 60 + Number(m[3]);
+  return m[1] === '-' ? -mins : mins;
+}
+
+/* DTSTART shown by an observance, as a naive wall-clock epoch (no offset). */
+function onsetWallClock(comp) {
+  var m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/.exec(comp.props.DTSTART);
+  if (!m) throw new Error('bad observance DTSTART ' + comp.props.DTSTART);
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+    Number(m[4]), Number(m[5]), Number(m[6]));
+}
+
+/* The real UTC instant an observance's DTSTART denotes, via TZOFFSETFROM. */
+function onsetInstant(comp) {
+  return onsetWallClock(comp) - parseOffsetToken(comp.props.TZOFFSETFROM) * 60000;
+}
+
+/* Resolve a local wall-clock instant using nothing but the emitted components:
+ * the latest onset not after it wins, and TZOFFSETTO gives the offset. */
+function resolveWithComponents(comps, naiveMs) {
+  var best = null;
+  comps.forEach(function (comp) {
+    var onset = onsetWallClock(comp);
+    if (onset <= naiveMs && (!best || onset > best.onset)) best = { onset: onset, comp: comp };
+  });
+  if (!best) return null;
+  return naiveMs - parseOffsetToken(best.comp.props.TZOFFSETTO) * 60000;
+}
+
+test('VTIMEZONE: New York onsets are second-precise and in the TZOFFSETFROM frame', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'NY',
+    start: new Date('2026-07-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'America/New_York'
+  });
+  cal.includeVtimezone = true;
+  var comps = vtimezoneComponents(cal.toString());
+
+  var spring = comps.filter(function (c) { return c.props.DTSTART === '20260308T020000'; })[0];
+  assert.ok(spring, '2026 spring-forward onset must be DTSTART:20260308T020000');
+  assert.eq(spring.type, 'DAYLIGHT');
+  assert.eq(spring.props.TZOFFSETFROM, '-0500');
+  assert.eq(spring.props.TZOFFSETTO, '-0400');
+  assert.ok(Math.abs(onsetInstant(spring) - Date.UTC(2026, 2, 8, 7, 0, 0)) <= 1000,
+    'spring onset must re-resolve to the true transition within one second');
+
+  var fall = comps.filter(function (c) { return c.props.DTSTART === '20261101T020000'; })[0];
+  assert.ok(fall, '2026 fall-back onset must be DTSTART:20261101T020000');
+  assert.eq(fall.type, 'STANDARD');
+  assert.eq(fall.props.TZOFFSETFROM, '-0400');
+  assert.eq(fall.props.TZOFFSETTO, '-0500');
+  assert.ok(Math.abs(onsetInstant(fall) - Date.UTC(2026, 10, 1, 6, 0, 0)) <= 1000,
+    'fall onset must re-resolve to the true transition within one second');
+});
+
+test('VTIMEZONE: events spanning years emit onsets for every sampled year', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'Spring 2026',
+    start: new Date('2026-04-15T14:00:00Z'),
+    durationMinutes: 30,
+    timezone: 'America/New_York'
+  });
+  cal.addEvent({
+    title: 'Summer 2027',
+    start: new Date('2027-06-15T14:00:00Z'),
+    durationMinutes: 30,
+    timezone: 'America/New_York'
+  });
+  cal.includeVtimezone = true;
+  var comps = vtimezoneComponents(cal.toString());
+  var starts = comps.map(function (c) { return c.props.DTSTART; });
+
+  assert.includes(starts, '20260308T020000');
+  assert.includes(starts, '20261101T020000');
+  assert.includes(starts, '20270314T020000');
+  assert.includes(starts, '20271107T020000');
+  assert.ok(comps.filter(function (c) { return c.type === 'DAYLIGHT'; }).length >= 2,
+    'each spanned year contributes a DAYLIGHT onset');
+  assert.ok(comps.filter(function (c) { return c.type === 'STANDARD'; }).length >= 2,
+    'each spanned year contributes a STANDARD onset');
+
+  /* Strict resolution of the 2027 June event from the block alone. */
+  var naive = Date.UTC(2027, 5, 15, 10, 0, 0);
+  assert.eq(resolveWithComponents(comps, naive), Date.UTC(2027, 5, 15, 14, 0, 0),
+    'the 2027 June event must land on its true UTC instant');
+});
+
+test('VTIMEZONE: Sydney labels the lower offset STANDARD and the higher DAYLIGHT', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'Sydney',
+    start: new Date('2026-07-15T04:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'Australia/Sydney'
+  });
+  cal.includeVtimezone = true;
+  var comps = vtimezoneComponents(cal.toString());
+  var standard = comps.filter(function (c) { return c.type === 'STANDARD'; });
+  var daylight = comps.filter(function (c) { return c.type === 'DAYLIGHT'; });
+
+  assert.ok(standard.length >= 1, 'Sydney must emit a STANDARD component');
+  assert.ok(daylight.length >= 1, 'Sydney must emit a DAYLIGHT component');
+  standard.forEach(function (c) { assert.eq(c.props.TZOFFSETTO, '+1000'); });
+  daylight.forEach(function (c) { assert.eq(c.props.TZOFFSETTO, '+1100'); });
+});
+
+test('VTIMEZONE: event years beyond the old sampling cap are still emitted', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'Summer 2026',
+    start: new Date('2026-06-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'America/New_York'
+  });
+  cal.addEvent({
+    title: 'Summer 2040',
+    start: new Date('2040-06-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'America/New_York'
+  });
+  cal.includeVtimezone = true;
+  var comps = vtimezoneComponents(cal.toString());
+  var starts = comps.map(function (c) { return c.props.DTSTART; });
+
+  /* Both event years are mandatory onsets; the 2041 recurrence margin fits. */
+  assert.includes(starts, '20260308T020000');
+  assert.includes(starts, '20400311T020000');
+  assert.includes(starts, '20401104T020000');
+  assert.includes(starts, '20410310T020000');
+  /* No contiguous-range sampling: 2030 is neither an event year nor the margin. */
+  assert.ok(starts.indexOf('20300310T020000') === -1,
+    'intermediate years must not be sampled just to fill the range');
+  assert.ok(starts.indexOf('20370308T020000') === -1,
+    'the block must not stop at the old 12-year truncation point');
+
+  /* Strict resolution of the 2040 June event from the block alone. */
+  var naive = Date.UTC(2040, 5, 15, 10, 0, 0);
+  assert.eq(resolveWithComponents(comps, naive), Date.UTC(2040, 5, 15, 14, 0, 0),
+    'the 2040 June event must land on EDT (-0400), not the truncated EST offset');
+});
+
+test('VTIMEZONE: offsets still resolve when Intl longOffset is unsupported', function () {
+  var RealDateTimeFormat = Intl.DateTimeFormat;
+  var modulePath = require.resolve('../ics.js');
+
+  /* Simulate an engine without the 'longOffset' timeZoneName (its constructor
+   * throws a RangeError). Rebuild the module so its per-zone formatter caches
+   * start empty, and keep the hostile Intl in place while it renders. */
+  function LongOffsetHostile(locale, options) {
+    if (options && options.timeZoneName === 'longOffset') {
+      throw new RangeError('timeZoneName "longOffset" is not supported');
+    }
+    return new RealDateTimeFormat(locale, options);
+  }
+
+  Intl.DateTimeFormat = LongOffsetHostile;
+  try {
+    delete require.cache[modulePath];
+    var FallbackICS = require('../ics.js');
+    var cal = new FallbackICS.Calendar();
+    cal.addEvent({
+      title: 'NY',
+      start: new Date('2026-07-15T14:00:00Z'),
+      durationMinutes: 60,
+      timezone: 'America/New_York'
+    });
+    cal.includeVtimezone = true;
+
+    var comps = vtimezoneComponents(cal.toString());
+    var byStart = {};
+    comps.forEach(function (c) { byStart[c.props.DTSTART] = c; });
+
+    assert.ok(byStart['20260308T020000'], 'spring-forward onset must survive the fallback');
+    assert.eq(byStart['20260308T020000'].props.TZOFFSETFROM, '-0500');
+    assert.eq(byStart['20260308T020000'].props.TZOFFSETTO, '-0400');
+    assert.ok(byStart['20261101T020000'], 'fall-back onset must survive the fallback');
+    assert.eq(byStart['20261101T020000'].props.TZOFFSETFROM, '-0400');
+    assert.eq(byStart['20261101T020000'].props.TZOFFSETTO, '-0500');
+
+    /* Block-only resolution still reaches the true UTC instant. */
+    var naive = Date.UTC(2026, 6, 15, 10, 0, 0);
+    assert.eq(resolveWithComponents(comps, naive), Date.UTC(2026, 6, 15, 14, 0, 0),
+      'the wall-clock fallback must yield the same offset as longOffset');
+  } finally {
+    Intl.DateTimeFormat = RealDateTimeFormat;
+    delete require.cache[modulePath];
+    require('../ics.js'); /* restore the shared module instance in the cache */
+  }
 });

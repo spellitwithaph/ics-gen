@@ -10,7 +10,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-10-04T02:26:03Z` (ISO 8601, UTC)
+> **Last updated:** `2026-10-04T03:41:28Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -285,7 +285,7 @@ SQL injection) do not apply. What does apply is the client-side half of the indu
 - **No persistence** on a static host — fine for generating downloads, not for user accounts.
 - **No server-side invitations** — attendees are `mailto:` links; the sender's mail client handles them.
 - **Content-Security-Policy**: `index.html` ships a strict meta CSP (`default-src 'none'`, `script-src 'self'`, no inline script). The only third-party allowances are `https://static.cloudflareinsights.com` (script) and `https://cloudflareinsights.com` (connect) for the Cloudflare Web Analytics beacon that Pages auto-injects — cookie-free visit counting only; on hosts without injection (GitHub Pages, `file://`) the allowances are simply unused. `file:` sources are explicitly allowed so double-clicking `index.html` keeps working on every browser (scheme `'self'` cannot match local files). Works unchanged on `file://` in Chromium and Firefox. If you ever add inline handlers or external resources, adjust the meta tag or move the policy to response headers (Netlify `_headers`, Cloudflare `_headers`, nginx `add_header`, …). GitHub Pages cannot send custom headers, so the meta tag is the enforcement there.
-- `TZID` is emitted **without** an accompanying `VTIMEZONE` component. Google/Outlook/Apple resolve IANA names client-side, which works in practice; if you need a strictly self-contained file (e.g. offline-only clients), add a `VTIMEZONE` block.
+- `TZID` events can optionally carry a generated `VTIMEZONE` component (v2's opt-in **Include VTIMEZONE blocks** checkbox), built from transitions sampled across the years the events span and therefore approximate for zones with exotic history; v1 at `/` still emits `TZID` without one.
 
 ## License
 
