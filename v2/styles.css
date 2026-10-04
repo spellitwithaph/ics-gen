@@ -41,7 +41,9 @@ main {
   gap: 20px;
   align-items: start;
 }
-@media (max-width: 920px) { main { grid-template-columns: 1fr; } }
+/* minmax(0, 1fr) (not bare 1fr) keeps the panels shrinkable so the preview
+ * box cannot push the track past the viewport on narrow screens. */
+@media (max-width: 920px) { main { grid-template-columns: minmax(0, 1fr); } }
 
 .panel {
   background: var(--panel);
@@ -342,11 +344,19 @@ pre {
 }
 #preview.wrapped { white-space: pre-wrap; }
 
-/* Preview controls sit in the summary, floated out of the way of the label
- * text. The buttons swallow their clicks in app.js so the details does not
- * toggle when they are used. */
+/* Preview controls live inside the summary, which is a wrapping flex row so
+ * the buttons drop below the label and the summary grows in height instead
+ * of overflowing on narrow screens (e.g. 320px with Wrap on). The buttons
+ * swallow their clicks in app.js so the details does not toggle when they
+ * are used. */
+#preview-box summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
 .preview-controls {
-  float: right;
+  margin-left: auto;
   display: flex;
   gap: 6px;
   font-size: 12.5px;
@@ -409,6 +419,8 @@ footer a { color: var(--accent); }
     --danger: #ff9285;
     --code-bg: #0a0f1a;
     --code-text: #cdd8ea;
+    /* Native controls (date/time pickers, scrollbars) render dark. */
+    color-scheme: dark;
   }
 
   /* The chevron is an inline SVG data URI, so its stroke cannot follow a
@@ -428,5 +440,13 @@ footer a { color: var(--accent); }
   .btn.primary,
   .btn.copied {
     color: #0f1420;
+  }
+
+  /* Browser-default link blue (#0000ee) is ~1.8:1 on the dark panel; the
+   * accent keeps AA. footer a already resolves to the accent via the base
+   * rule — kept here so both link sets stay accessible if that changes. */
+  .faq a,
+  footer a {
+    color: var(--accent);
   }
 }
