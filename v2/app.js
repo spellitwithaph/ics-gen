@@ -212,10 +212,70 @@
     }
   }
 
+  /* Weekly recurrence day codes in RFC 5545 / calendar order. */
+  var WEEKDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+
+  function bydayBoxes() {
+    return document.querySelectorAll('#field-byday input[type="checkbox"]');
+  }
+
+  /* Checked day codes, in the picker's DOM order (already MO…SU). */
+  function readByday() {
+    var boxes = bydayBoxes();
+    var out = [];
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked) out.push(boxes[i].value);
+    }
+    return out;
+  }
+
+  function setByday(days) {
+    var boxes = bydayBoxes();
+    var want = days || [];
+    for (var i = 0; i < boxes.length; i++) {
+      boxes[i].checked = want.indexOf(boxes[i].value) !== -1;
+    }
+  }
+
+  /* Canonical MO…SU order so a representable rule always re-emits identically. */
+  function sortByday(days) {
+    return WEEKDAY_CODES.filter(function (code) { return days.indexOf(code) !== -1; });
+  }
+
+  /* BYDAY value → canonical day codes, or null when any token is not one of the
+   * seven weekday codes (ordinals like "2MO", malformed/empty values). */
+  function parseByday(value) {
+    var tokens = String(value).toUpperCase().split(',');
+    var days = [];
+    for (var i = 0; i < tokens.length; i++) {
+      var code = tokens[i].trim();
+      if (WEEKDAY_CODES.indexOf(code) === -1) return null;
+      if (days.indexOf(code) === -1) days.push(code);
+    }
+    return days.length ? sortByday(days) : null;
+  }
+
+  /* The weekday of the current start date, as a BYDAY code. */
+  function startWeekdayCode() {
+    if (!startDateEl.value) return null;
+    var p = parseDateInput(startDateEl.value);
+    var d = new Date(p.year, p.month - 1, p.day);
+    return WEEKDAY_CODES[(d.getDay() + 6) % 7];
+  }
+
+  /* Entering WEEKLY with nothing checked defaults to the start date's weekday. */
+  function defaultBydayToStart() {
+    if (readByday().length) return;
+    var code = startWeekdayCode();
+    if (code) setByday([code]);
+  }
+
   function syncRecurUI() {
-    var off = $('recur-freq').value === 'NONE';
+    var freq = $('recur-freq').value;
+    var off = freq === 'NONE';
     $('field-interval').hidden = off;
     $('field-until').hidden = off;
+    $('field-byday').hidden = off || freq !== 'WEEKLY';
     /* Down to just the select? Let it span a Status-select-sized column
      * instead of the first third of the row (which clips "Does not repeat"). */
     $('recur-row').classList.toggle('single', off);
@@ -229,7 +289,11 @@
   }
 
   $('all-day').addEventListener('change', syncAllDayUI);
-  $('recur-freq').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
+  $('recur-freq').addEventListener('change', function () {
+    if ($('recur-freq').value === 'WEEKLY') defaultBydayToStart();
+    syncRecurUI();
+    updateKeptHint();
+  });
   $('reminder-toggle').addEventListener('change', function () { syncReminderUI(); updateKeptHint(); });
   /* The "kept as-is" hint names only what the current controls will actually
    * preserve, so refresh it whenever one of them changes. */
@@ -498,6 +562,11 @@
       var parts = ['FREQ=' + freq];
       var iv = parseInt($('recur-interval').value, 10);
       if (!isNaN(iv) && iv > 1) parts.push('INTERVAL=' + iv);
+      if (freq === 'WEEKLY') {
+        /* No checked days means "weekly on the start weekday" (no BYDAY). */
+        var days = sortByday(readByday());
+        if (days.length) parts.push('BYDAY=' + days.join(','));
+      }
       var until = $('recur-until').value;
       if (until) {
         var up = parseDateInput(until);
@@ -593,10 +662,11 @@
     return localTimeZone();
   }
 
-  /* Only the form's simple subset (FREQ/INTERVAL/UNTIL) is representable;
-   * anything else (COUNT, BYDAY, …) is preserved on the event but not loaded. */
+  /* Only the form's simple subset is representable: FREQ, INTERVAL, a weekly
+   * BYDAY, and UNTIL. Anything else (COUNT, BYDAY on a non-weekly rule,
+   * ordinal BYDAY, …) is preserved on the event but not loaded. */
   function simpleRule(rule, allDay, tz) {
-    var out = { freq: null, interval: 1, until: '' };
+    var out = { freq: null, interval: 1, until: '', byday: null };
     var parts = String(rule).split(';');
     for (var i = 0; i < parts.length; i++) {
       var kv = parts[i].split('=');
@@ -607,6 +677,10 @@
         out.freq = v;
       } else if (k === 'INTERVAL') {
         out.interval = parseInt(v, 10) || 1;
+      } else if (k === 'BYDAY') {
+        var days = parseByday(v);
+        if (!days) return null;
+        out.byday = days;
       } else if (k === 'UNTIL') {
         var u = untilToDate(v, allDay, tz);
         if (!u) return null;
@@ -615,7 +689,10 @@
         return null;
       }
     }
-    return out.freq ? out : null;
+    if (!out.freq) return null;
+    /* BYDAY only means anything on a weekly rule in this simple form. */
+    if (out.byday && out.freq !== 'WEEKLY') return null;
+    return out;
   }
 
   /* RRULE UNTIL → a value for the date input. */
@@ -823,6 +900,15 @@
     $('recur-freq').value = rule ? rule.freq : 'NONE';
     $('recur-interval').value = rule ? rule.interval : 1;
     $('recur-until').value = rule ? rule.until : '';
+    if (rule && rule.byday) {
+      setByday(rule.byday);
+    } else if (rule && rule.freq === 'WEEKLY') {
+      /* Weekly without BYDAY repeats on the start date's weekday. */
+      var startDay = startWeekdayCode();
+      setByday(startDay ? [startDay] : null);
+    } else {
+      setByday(null);
+    }
     syncRecurUI();
 
     var alarm = simpleAlarm(ev.alarms);
