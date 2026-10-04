@@ -512,7 +512,26 @@ textarea { resize: vertical; }
   margin-bottom: 8px;
   background: var(--surface);
 }
-#event-list .event-info { min-width: 0; }
+/* The prepended calendar glyph sits left of the stacked title + summary, so
+ * .event-info is a two-column grid; the glyph spans both text rows. (A plain
+ * flex row would place the title and the summary side by side.) */
+#event-list .event-info {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+}
+/* Background data-URI SVG (CSP img-src data:), stroke in the light muted
+ * tone — a background image cannot follow currentColor; the dark scheme
+ * re-declares the image below, same pattern as the select chevron. */
+.event-glyph {
+  grid-row: 1 / span 2;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 8px 0 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect x='1.5' y='2.5' width='13' height='12' rx='2.5' fill='none' stroke='%2355627a' stroke-width='1.5'/%3E%3Cpath d='M1.5 6h13M5 1v3M11 1v3' fill='none' stroke='%2355627a' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain;
+}
 #event-list strong { display: block; font-size: 14px; }
 #event-list small {
   color: var(--muted);
@@ -651,6 +670,11 @@ footer a { color: var(--accent); }
 
   #preview-box summary::after {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%239aa8c0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+
+  /* Event-list calendar glyph in the dark muted tone. */
+  .event-glyph {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect x='1.5' y='2.5' width='13' height='12' rx='2.5' fill='none' stroke='%239aa8c0' stroke-width='1.5'/%3E%3Cpath d='M1.5 6h13M5 1v3M11 1v3' fill='none' stroke='%239aa8c0' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
   }
 
   /* The light-mode ring alpha is nearly invisible on the dark fields. */

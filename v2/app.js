@@ -1621,6 +1621,10 @@
 
         var info = document.createElement('div');
         info.className = 'event-info';
+        var glyph = document.createElement('span');
+        glyph.className = 'event-glyph';
+        glyph.setAttribute('aria-hidden', 'true');
+        info.appendChild(glyph);
         var strong = document.createElement('strong');
         strong.textContent = ev.options.title;
         strong.tabIndex = -1; /* programmatic focus target after an update */
