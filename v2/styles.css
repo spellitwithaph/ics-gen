@@ -124,7 +124,7 @@ main {
 }
 #event-form > .form-section:first-of-type { margin-top: 0; }
 
-.field { margin-bottom: 14px; }
+.field { margin-bottom: 14px; min-width: 0; }
 .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 /* The title is the one deliberately large field. */
 #title { font-size: 17px; }
@@ -164,6 +164,13 @@ summary:focus-visible,
   padding-right: 30px;
   background: var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%2355627a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;
 }
+
+/* Strip the native date/time controls' intrinsic floor: min-width:0 alone
+ * isn't enough on iOS Safari - appearance:none is what actually lets the
+ * native control shrink to the track. display/width still come from the
+ * .field input rule. */
+input[type="date"],
+input[type="time"] { min-width: 0; -webkit-appearance: none; appearance: none; }
 
 textarea { resize: vertical; }
 /* Zone filter sits directly above the select it narrows. */
@@ -247,10 +254,14 @@ textarea { resize: vertical; }
 }
 #import-notes li { overflow-wrap: anywhere; }
 
-.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.field-row.tri { grid-template-columns: repeat(3, 1fr); }
+/* minmax(0, 1fr) (not bare 1fr) keeps the tracks shrinkable: iOS Safari's
+ * native date/time controls have a large intrinsic min-content width, so a
+ * bare 1fr track (= minmax(auto, 1fr)) can't shrink below it and the inputs
+ * overflow the row. Same fix as main/.reminder-row above. */
+.field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.field-row.tri { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 560px) {
-  .field-row, .field-row.tri { grid-template-columns: 1fr; }
+  .field-row, .field-row.tri { grid-template-columns: minmax(0, 1fr); }
 }
 
 .check {
