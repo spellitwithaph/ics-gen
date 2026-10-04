@@ -1713,8 +1713,20 @@
     }
   });
 
+  /* Calendar.toString reads options.name each time; no library setter needed.
+   * These toolbar inputs are deliberately outside the event form snapshots. */
+  function syncCalendarName() {
+    cal.options.name = $('calendar-name').value;
+  }
+
+  $('calendar-name').addEventListener('input', function () { syncCalendarName(); render(); });
+  $('calendar-name').addEventListener('change', function () { syncCalendarName(); render(); });
+  $('download-filename').addEventListener('input', saveEvents);
+  $('download-filename').addEventListener('change', saveEvents);
+
   $('download-btn').addEventListener('click', function () {
-    IcsGenerator.download(slugify(cal.events[0].options.title) + '.ics', cal.toString());
+    var filename = $('download-filename').value.trim() || cal.events[0].options.title;
+    IcsGenerator.download(slugify(filename) + '.ics', cal.toString());
     setStatus('Download started.');
   });
 
@@ -2028,9 +2040,9 @@
    * because localStorage throws on some schemes (file:// in some browsers,
    * private mode, disabled storage) and a failure must never break the page. */
   var STORAGE_KEY = 'ics-gen-v2';
-  /* 2 wraps each record as { options, uid }; 1 was the flat options array that
-   * never shipped past this branch and is still accepted on restore. */
-  var STORAGE_VERSION = 2;
+  /* 3 adds calendarName/fileName; 2 wraps records as { options, uid };
+   * 1 was the flat options array and is still accepted on restore. */
+  var STORAGE_VERSION = 3;
   var MAX_RESTORED_EVENTS = MAX_EVENTS;
   /* skipNextSave is set when a restore is refused (foreign/newer payload) so
    * the very next automatic save does not overwrite data this version does not
@@ -2084,6 +2096,8 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: STORAGE_VERSION,
+        calendarName: $('calendar-name').value,
+        fileName: $('download-filename').value,
         /* Each record carries its effective uid alongside the options so a
          * reload reproduces the identical UID line instead of a new random one. */
         events: cal.events.map(function (ev) {
@@ -2116,15 +2130,20 @@
       skipNextSave = true;
       return { restored: 0, saved: 0 };
     }
-    /* v2 wraps each record as { options, uid }; v1 stored bare options. A
-     * newer/foreign version must not be silently replaced by an empty calendar,
-     * so skip the next automatic save until the visitor changes the list. */
+    /* Accept v1's flat options and v2's wrapped records. Missing names leave
+     * the UI defaults intact, then save migrates whatever the controls hold.
+     * A newer/foreign version skips the next automatic save as before. */
     var legacy = data.version === 1;
-    if (!legacy && data.version !== STORAGE_VERSION) {
+    if (!legacy && data.version !== 2 && data.version !== STORAGE_VERSION) {
       skipNextSave = true;
       return { restored: 0, saved: 0 };
     }
     if (!Array.isArray(data.events)) return { restored: 0, saved: 0 };
+    if (data.version === STORAGE_VERSION) {
+      if (typeof data.calendarName === 'string') $('calendar-name').value = data.calendarName.slice(0, 60);
+      if (typeof data.fileName === 'string') $('download-filename').value = data.fileName.slice(0, 60);
+    }
+    syncCalendarName();
 
     var saved = data.events.length;
     var count = 0;
@@ -2151,6 +2170,7 @@
 
   /* ---------- init ---------- */
 
+  syncCalendarName();
   defaultFormDates();
   populateTimeZones();
   syncAllDayUI();

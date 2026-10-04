@@ -82,6 +82,15 @@ test('mutated transp and priority are revalidated during serialization', functio
   assert.throws(function () { ev.toString(); }, /event "priority"/);
 });
 
+test('calendar name can be changed or omitted through its options', function () {
+  var cal = new ICS.Calendar({ name: 'My Events' });
+  assert.includes(cal.toString(), 'X-WR-CALNAME:My Events');
+  cal.options.name = 'Team, planning';
+  assert.includes(cal.toString(), 'X-WR-CALNAME:Team\\, planning');
+  cal.options.name = '';
+  assert.ok(cal.toString().indexOf('X-WR-CALNAME:') === -1);
+});
+
 /* ---------- escaping ---------- */
 
 test('escapeText escapes backslashes', function () {

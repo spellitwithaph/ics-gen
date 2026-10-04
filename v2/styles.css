@@ -259,6 +259,11 @@ textarea { resize: vertical; }
 }
 .toolbar h2 { margin: 0; }
 .toolbar-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.calendar-name-field { width: min(100%, 28ch); margin-bottom: 0; }
+.download-controls { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.filename-field { width: 14ch; margin-bottom: 0; }
+.toolbar .field label { font-size: 12px; margin-bottom: 3px; }
+.toolbar .field input { padding: 9px; }
 
 #event-list { list-style: none; margin: 0 0 14px; padding: 0; }
 #event-list li {
