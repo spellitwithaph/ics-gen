@@ -1279,6 +1279,7 @@
           /* This mutation supersedes any pending undo: drop it without
            * restoring so a later Undo cannot wipe the duplicate. */
           cal.addEvent(cloneEventOptions(ev.options));
+          unlockStorage();
           dismissUndoToast();
           render();
           setStatus('Duplicated "' + ev.options.title + '".');
@@ -1292,6 +1293,7 @@
           var removed = cal.events[i];
           var removedIndex = i;
           cal.removeEvent(removedIndex);
+          unlockStorage();
           render();
           showUndoToast('Removed "' + removed.options.title + '".', function () {
             /* Reinsertion grows the list, so respect the same cap every other
@@ -1535,6 +1537,7 @@
     }
     /* A refused undo (e.g. the cap would be exceeded) reports its own status. */
     if (result === false) return;
+    unlockStorage();
     render(); /* also persists the restored list */
     setStatus('Undone.');
     if (focusInside) refocusAfterUndo(trigger);
@@ -1664,6 +1667,7 @@
             return;
           }
           updated = cal.addEvent(opts);
+          unlockStorage();
           dismissUndoToast();
           exitEditMode();
           render();
@@ -1678,6 +1682,7 @@
             opts.alarms = editingKept.alarms.map(copyPlain);
           }
           updated = cal.updateEvent(index, opts);
+          unlockStorage();
           dismissUndoToast();
           exitEditMode();
           render();
@@ -1693,6 +1698,7 @@
       }
 
       var ev = cal.addEvent(opts);
+      unlockStorage();
       dismissUndoToast();
       /* quick-entry flow: roll the form forward to the next slot */
       if (!$('all-day').checked && endDateEl.value && endTimeEl.value) {
@@ -1769,12 +1775,14 @@
   $('clear-btn').addEventListener('click', function () {
     if (!cal.events.length) {
       cal.clear();
+      unlockStorage();
       render();
       setStatus('Cleared.');
       return;
     }
     var snapshot = cal.events.slice();
     cal.clear();
+    unlockStorage();
     render();
     setStatus('Cleared.');
     showUndoToast(
@@ -1793,6 +1801,7 @@
     exitEditMode();
 
     cal.clear();
+    unlockStorage();
 
     /* 1. recurring standup — remind 10 min before (number trigger) */
     cal.addEvent({
@@ -1938,6 +1947,7 @@
       /* Importing mutated the list, so it supersedes any pending undo. Dismiss
        * here (not before the loop) so an import that adds nothing leaves a
        * still-valid undo intact. */
+      unlockStorage();
       dismissUndoToast();
       render();
       /* Collapse the panel so the (now populated) form is pulled into view. */
@@ -2044,10 +2054,13 @@
    * 1 was the flat options array and is still accepted on restore. */
   var STORAGE_VERSION = 3;
   var MAX_RESTORED_EVENTS = MAX_EVENTS;
-  /* skipNextSave is set when a restore is refused (foreign/newer payload) so
-   * the very next automatic save does not overwrite data this version does not
-   * understand. */
-  var skipNextSave = false;
+  /* Set when a restore leaves the stored payload unreadable or only partly
+   * restored. While locked, saveEvents() writes nothing, so a metadata edit
+   * can never overwrite data this version could not fully read. An explicit
+   * event-list mutation expresses intent to move on and clears the lock. */
+  var storageLocked = false;
+
+  function unlockStorage() { storageLocked = false; }
   var SAVE_BLOCKED_MSG = "This browser blocks saving — events won't survive a reload.";
 
   /* The save warning has its own persistent element (not #status-msg) so a
@@ -2092,7 +2105,7 @@
   }
 
   function saveEvents() {
-    if (skipNextSave) { skipNextSave = false; return; }
+    if (storageLocked) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: STORAGE_VERSION,
@@ -2113,32 +2126,35 @@
     }
   }
 
-  /* Returns { restored, saved } counts. `saved` is how many records the payload
-   * held before the 200 cap so the caller can say when data was dropped. */
+  /* Returns { restored, saved, failed, unreadable }. `saved` is how many
+   * records the payload held before the 200 cap. `failed` is true when any
+   * part of the payload could not be restored, so the caller locks storage.
+   * `unreadable` marks payloads this version cannot read at all (malformed
+   * JSON, a foreign/newer version, or a missing events array). */
   function restoreEvents() {
     var raw;
     try {
       raw = localStorage.getItem(STORAGE_KEY);
-    } catch (e) { return { restored: 0, saved: 0 }; }
-    if (!raw) return { restored: 0, saved: 0 };
+    } catch (e) { return { restored: 0, saved: 0, failed: false, unreadable: false }; }
+    if (!raw) return { restored: 0, saved: 0, failed: false, unreadable: false };
 
     var data;
     try {
       data = JSON.parse(raw);
-    } catch (e) { return { restored: 0, saved: 0 }; }
+    } catch (e) { return { restored: 0, saved: 0, failed: true, unreadable: true }; }
     if (!data || typeof data !== 'object') {
-      skipNextSave = true;
-      return { restored: 0, saved: 0 };
+      return { restored: 0, saved: 0, failed: true, unreadable: true };
     }
     /* Accept v1's flat options and v2's wrapped records. Missing names leave
      * the UI defaults intact, then save migrates whatever the controls hold.
-     * A newer/foreign version skips the next automatic save as before. */
+     * A newer/foreign version is left untouched in storage. */
     var legacy = data.version === 1;
     if (!legacy && data.version !== 2 && data.version !== STORAGE_VERSION) {
-      skipNextSave = true;
-      return { restored: 0, saved: 0 };
+      return { restored: 0, saved: 0, failed: true, unreadable: true };
     }
-    if (!Array.isArray(data.events)) return { restored: 0, saved: 0 };
+    if (!Array.isArray(data.events)) {
+      return { restored: 0, saved: 0, failed: true, unreadable: true };
+    }
     if (data.version === STORAGE_VERSION) {
       if (typeof data.calendarName === 'string') $('calendar-name').value = data.calendarName.slice(0, 60);
       if (typeof data.fileName === 'string') $('download-filename').value = data.fileName.slice(0, 60);
@@ -2147,10 +2163,11 @@
 
     var saved = data.events.length;
     var count = 0;
+    var dropped = saved > MAX_RESTORED_EVENTS;
     data.events.slice(0, MAX_RESTORED_EVENTS).forEach(function (record) {
-      if (!record || typeof record !== 'object') return;
+      if (!record || typeof record !== 'object') { dropped = true; return; }
       var options = legacy ? record : record.options;
-      if (!options || typeof options !== 'object') return;
+      if (!options || typeof options !== 'object') { dropped = true; return; }
       try {
         var ev = cal.addEvent(deserializeOptions(options));
         /* v1 records carry no uid, so the fresh one addEvent generated stands. */
@@ -2163,9 +2180,9 @@
           ev.uid = uid;
         }
         count++;
-      } catch (e) { /* an event that no longer validates is skipped */ }
+      } catch (e) { dropped = true; /* an event that no longer validates is skipped */ }
     });
-    return { restored: count, saved: saved };
+    return { restored: count, saved: saved, failed: dropped, unreadable: false };
   }
 
   /* ---------- init ---------- */
@@ -2178,21 +2195,31 @@
   syncReminderUI();
   var restored = 0;
   var savedTotal = 0;
+  var restoreFailed = false;
+  var restoreUnreadable = false;
   try {
     var restoreResult = restoreEvents();
     restored = restoreResult.restored;
     savedTotal = restoreResult.saved;
+    restoreFailed = restoreResult.failed;
+    restoreUnreadable = restoreResult.unreadable;
   } catch (e) {
     /* No restore path may leave the page half-initialized: drop whatever was
-     * loaded and continue with an empty list. */
+     * loaded, lock storage and continue with an empty list. */
     cal.clear();
-    setStatus('Saved events could not be restored.', true);
+    restoreFailed = true;
+    restoreUnreadable = true;
   }
+  if (restoreFailed) storageLocked = true;
   render();
-  if (restored && savedTotal > restored) {
+  if (restoreUnreadable) {
+    setStatus('Saved events could not be restored — they were left untouched in storage.', true);
+  } else if (restored && savedTotal > restored) {
     setStatus('Restored ' + restored + ' of ' + savedTotal + ' saved events — the rest could not be restored.');
   } else if (restored) {
     setStatus('Restored ' + restored + ' saved event(s).');
+  } else if (savedTotal > 0) {
+    setStatus('Saved events could not be restored — they were left untouched in storage.', true);
   }
   /* Start keyboard visitors in the first field (no scroll-jumping). */
   $('title').focus();
