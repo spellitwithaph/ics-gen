@@ -1361,7 +1361,7 @@
         gcal.rel = 'noopener noreferrer';
         gcal.textContent = 'Google Calendar';
         gcal.title = 'Open in Google Calendar';
-        gcal.setAttribute('aria-label', 'Open ' + ev.options.title + ' in Google Calendar');
+        gcal.setAttribute('aria-label', 'Open ' + ev.options.title + ' in Google Calendar (opens in a new tab)');
 
         var del = document.createElement('button');
         del.type = 'button';
@@ -1563,7 +1563,10 @@
   /* Refocus after the toast goes away only when focus was inside it, and prefer
    * the button that triggered the action (if it still exists). */
   function refocusAfterUndo(trigger) {
-    if (trigger && trigger.isConnected) { trigger.focus(); return; }
+    /* offsetParent is null for a disconnected node and for a hidden one (a
+     * control inside a collapsed <details>), so an invisible trigger falls
+     * through to the title instead of losing focus. */
+    if (trigger && trigger.isConnected && trigger.offsetParent !== null) { trigger.focus(); return; }
     var title = $('title');
     if (title) title.focus();
   }
@@ -1803,6 +1806,14 @@
    * The name is trimmed so a whitespace-only value emits no X-WR-CALNAME. */
   function syncCalendarName() {
     cal.options.name = $('calendar-name').value.trim();
+  }
+
+  /* Put the calendar-name input and the library option back exactly as they
+   * were before an import attempt may have changed them. */
+  function restoreCalendarName(snap) {
+    if (!snap) return;
+    $('calendar-name').value = snap.value;
+    cal.options.name = snap.name;
   }
 
   /* Every keystroke would rebuild the list, preview and (when unlocked) the
@@ -2063,6 +2074,10 @@
       return;
     }
 
+    /* Capture the calendar name before the X-WR-CALNAME auto-fill below may
+     * overwrite it, so a rolled-back replace and its undo can put it back. */
+    var previousCalendarName = { value: $('calendar-name').value, name: cal.options.name };
+
     /* An imported calendar name fills the input only while it still shows the
      * built-in default; blank or whitespace names are intentional and stay
      * untouched, so a customized name is never overwritten either. */
@@ -2084,7 +2099,13 @@
     var replaceMode = $('import-mode-replace').checked;
     var previousEvents = replaceMode ? cal.events.slice() : null;
     var previousForm = replaceMode ? snapshotForm() : null;
-    if (replaceMode) cal.clear();
+    if (replaceMode) {
+      /* Leave edit mode before the swap so a stale Update target cannot outlive
+       * the list it pointed at; the snapshot above already captured the edit
+       * context, so Undo (and the zero-added rollback) restores it. */
+      exitEditMode();
+      cal.clear();
+    }
     result.events.forEach(function (ev) {
       if (cal.events.length >= MAX_EVENTS) { hitCap = true; return; }
       /* Skip an event only if ics.js rejects it outright; the count below
@@ -2096,11 +2117,12 @@
     });
 
     if (replaceMode && added === 0) {
-      /* A replace that imported nothing is a failure: put the previous list
-       * and form back before the failure status below explains it. */
+      /* A replace that imported nothing is a failure: put the previous list,
+       * form and calendar name back before the failure status below. */
       cal.events = previousEvents;
       restoreForm(previousForm);
       restoreEditState(previousForm);
+      restoreCalendarName(previousCalendarName);
       render();
     }
 
@@ -2122,17 +2144,29 @@
         $('title').focus();
       }
       if (replaceMode) {
-        showUndoToast('Replaced ' + previousEvents.length + ' event(s) with ' + added + ' imported.', function () {
-          cal.events = previousEvents;
-          restoreForm(previousForm);
-          restoreEditState(previousForm);
-        }, $('import-text-btn'));
+        /* The import panel collapses on success, so point Undo at the summary
+         * (still visible) instead of the now-hidden paste button. */
+        var importBox = $('import-box');
+        var importSummary = importBox && importBox.querySelector('summary');
+        var undoTrigger = importSummary && importSummary.offsetParent !== null
+          ? importSummary : $('import-text-btn');
+        showUndoToast(
+          'Replaced ' + previousEvents.length + ' ' +
+            (previousEvents.length === 1 ? 'event' : 'events') + ' with ' + added + ' imported.',
+          function () {
+            cal.events = previousEvents;
+            restoreForm(previousForm);
+            restoreEditState(previousForm);
+            restoreCalendarName(previousCalendarName);
+          },
+          undoTrigger
+        );
       }
     }
 
     var msg = 'Imported ' + added + ' of ' + result.events.length +
       ' event' + (result.events.length === 1 ? '' : 's');
-    if (replaceMode) msg += ' (replaced ' + previousEvents.length + ')';
+    if (replaceMode && added > 0) msg += ' (replaced ' + previousEvents.length + ')';
     if (sourceLabel) msg += ' from ' + sourceLabel;
     setImportStatus(msg + '.', added === 0);
     if (hitCap) setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
@@ -2143,11 +2177,16 @@
     if (!file) return;
     var name = String(file.name || '');
     if (file.size > MAX_IMPORT_CHARS) {
+      /* A file-level rejection must not leave the previous import's notes up. */
+      renderImportNotes([]);
       setImportStatus('"' + name + '" is larger than 2 MB — refusing to parse it.', true);
       return;
     }
     function done(text) { applyImport(text, '"' + name + '"'); }
-    function fail() { setImportStatus('Could not read "' + name + '".', true); }
+    function fail() {
+      renderImportNotes([]);
+      setImportStatus('Could not read "' + name + '".', true);
+    }
     if (typeof file.text === 'function') {
       file.text().then(done, fail);
     } else {
