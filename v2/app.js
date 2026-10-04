@@ -695,25 +695,21 @@
       }
       var end = $('recur-end').value;
       if (end === 'after') {
-        var count = parseInt($('recur-count').value, 10);
-        if (!(count >= 1)) {
-          errors['recur-count'] = 'Pick how many occurrences (1 or more).';
+        var countEl = $('recur-count');
+        var count = Number.isFinite(countEl.valueAsNumber) ? countEl.valueAsNumber : parseFloat(countEl.value);
+        if (!Number.isFinite(count) || Math.floor(count) !== count || count < 1 || count > 999) {
+          errors['recur-count'] = 'Pick a whole number of occurrences (1-999).';
         } else {
           parts.push('COUNT=' + count);
         }
       } else if (end === 'on-date') {
         var until = $('recur-until').value;
-        if (until) {
-          var up = parseDateInput(until);
-          if (allDay) {
-            parts.push('UNTIL=' + IcsGenerator.formatDateUTC({ year: up.year, month: up.month, day: up.day }));
-          } else {
-            /* End of that day in the event's zone, converted to UTC (UNTIL for a
-             * timed rule must be a UTC instant). */
-            parts.push('UNTIL=' + IcsGenerator.formatDateTimeUTC(
-              zonedTimeToDate(up.year, up.month, up.day, 23, 59, opts.timezone || 'UTC', 59)
-            ));
-          }
+        if (!until) {
+          errors['recur-until'] = 'Pick the date the recurrence ends on.';
+        } else if (startDateEl.value && until < startDateEl.value) {
+          errors['recur-until'] = 'The end date must be on or after the event start date.';
+        } else {
+          parts.push('UNTIL=' + untilFromDate(until, allDay, opts.timezone || 'UTC'));
         }
       }
       opts.rrule = parts.join(';');
@@ -798,6 +794,16 @@
     return localTimeZone();
   }
 
+  /* The exact UNTIL token the form writes: date-only for all-day events,
+   * otherwise the end of the chosen calendar day in the event's zone. */
+  function untilFromDate(value, allDay, tz) {
+    var p = parseDateInput(value);
+    if (allDay) return IcsGenerator.formatDateUTC(p);
+    return IcsGenerator.formatDateTimeUTC(
+      zonedTimeToDate(p.year, p.month, p.day, 23, 59, tz || 'UTC', 59)
+    );
+  }
+
   /* Only the form's simple subset is representable: FREQ, INTERVAL, a weekly
    * BYDAY, and an end that is either UNTIL or COUNT (never both). Anything else
    * (BYDAY on a non-weekly rule, ordinal BYDAY, …) is preserved on the event but
@@ -822,7 +828,7 @@
         out.byday = days;
       } else if (k === 'UNTIL') {
         var u = untilToDate(v, allDay, tz);
-        if (!u) return null;
+        if (!u || untilFromDate(u, allDay, tz) !== v) return null;
         out.until = u;
         seenUntil = true;
       } else if (k === 'COUNT') {
@@ -1051,15 +1057,9 @@
     $('recur-until').value = rule ? rule.until : '';
     $('recur-end').value = !rule ? 'never'
       : (rule.count != null ? 'after' : (rule.until ? 'on-date' : 'never'));
-    if (rule && rule.byday) {
-      setByday(rule.byday);
-    } else if (rule && rule.freq === 'WEEKLY') {
-      /* Weekly without BYDAY repeats on the start date's weekday. */
-      var startDay = startWeekdayCode();
-      setByday(startDay ? [startDay] : null);
-    } else {
-      setByday(null);
-    }
+    /* An implicit start weekday stays implicit; only a fresh WEEKLY change
+     * defaults a checkbox, never loading or restoring the form. */
+    setByday(rule && rule.byday);
     syncRecurUI();
 
     var alarm = simpleAlarm(ev.alarms);
