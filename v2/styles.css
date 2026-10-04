@@ -54,8 +54,23 @@ main {
 }
 .panel h2 { margin: 0 0 14px; font-size: 16px; }
 
+/* Form section headers: light uppercase label with a hairline rule. */
+.form-section {
+  margin: 22px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#event-form > .form-section:first-of-type { margin-top: 0; }
+
 .field { margin-bottom: 14px; }
 .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+/* The title is the one deliberately large field. */
+#title { font-size: 17px; }
 .field input,
 .field select,
 .field textarea {
