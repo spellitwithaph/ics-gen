@@ -405,9 +405,26 @@
     $('field-count').hidden = off || end !== 'after';
     $('field-until').hidden = off || end !== 'on-date';
     $('field-byday').hidden = off || freq !== 'WEEKLY';
-    /* Down to just the select? Let it span a Status-select-sized column
-     * instead of the first third of the row (which clips "Does not repeat"). */
-    $('recur-row').classList.toggle('single', off);
+    /* Errors on controls that have just been hidden would sit invisible
+     * forever, so clear them alongside the hide (e.g. a count error when the
+     * visitor switches Repeat to Never). */
+    if ($('field-count').hidden) clearFieldError('recur-count');
+    if ($('field-until').hidden) clearFieldError('recur-until');
+    if ($('field-byday').hidden) {
+      var dayBoxes = bydayBoxes();
+      for (var i = 0; i < dayBoxes.length; i++) clearFieldError(dayBoxes[i].id);
+    }
+  }
+
+  /* The segmented control mirrors the (visually hidden) #recur-freq select,
+   * which stays the single source of truth for validation and the RRULE. */
+  function syncFreqChips() {
+    var freq = $('recur-freq').value;
+    var chips = document.querySelectorAll('#recur-freq-chips .chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].setAttribute('aria-pressed',
+        chips[i].getAttribute('data-freq') === freq ? 'true' : 'false');
+    }
   }
 
   function reminderRows() {
@@ -428,7 +445,16 @@
   $('recur-freq').addEventListener('change', function () {
     if ($('recur-freq').value === 'WEEKLY') defaultBydayToStart();
     syncRecurUI();
+    syncFreqChips();
     updateKeptHint();
+  });
+  $('recur-freq-chips').addEventListener('click', function (e) {
+    var chip = e.target.closest ? e.target.closest('.chip') : null;
+    if (!chip) return;
+    var sel = $('recur-freq');
+    sel.value = chip.getAttribute('data-freq');
+    /* Reuse the select's own change path (default BYDAY, visibility, hint). */
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
   });
   $('recur-end').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
   $('recur-count').addEventListener('change', updateKeptHint);
@@ -446,15 +472,51 @@
    * instant is cached, because a change event only carries the new value. */
   var prevStartInstant = null;
 
-  function instantFromDateInput(dateStr, timeStr) {
+  /* zonedTimeToDate always resolves an ambiguous (DST fall-back) wall time to
+   * its FIRST occurrence. That is the wrong read for the END of an event: a
+   * chip that adds N elapsed minutes can land inside the repeated hour, and
+   * re-reading that wall time an hour early silently shortens the event. When
+   * the instant an hour later still shows the same wall clock the label is
+   * repeated, so the LATER occurrence is the one that preserves the duration. */
+  function resolveWallLater(year, month, day, hour, minute, tz) {
+    var instant = zonedTimeToDate(year, month, day, hour, minute, tz);
+    var later = new Date(instant.getTime() + 60 * 60000);
+    var p = zoneParts(later, tz);
+    if (p.year === year && p.month === month && p.day === day &&
+        p.hour === hour && p.minute === minute) {
+      return later;
+    }
+    return instant;
+  }
+
+  function instantFromDateInput(dateStr, timeStr, preferLaterEnd) {
     if (!dateStr) return null;
     var d = parseDateInput(dateStr);
     var t = parseTimeInput(timeStr || '00:00'); /* missing time → midnight */
-    return zonedTimeToDate(d.year, d.month, d.day, t.hour, t.minute, timezoneEl.value || localTimeZone());
+    var tz = timezoneEl.value || localTimeZone();
+    if (preferLaterEnd) return resolveWallLater(d.year, d.month, d.day, t.hour, t.minute, tz);
+    return zonedTimeToDate(d.year, d.month, d.day, t.hour, t.minute, tz);
   }
 
   function rememberStartInstant() {
     prevStartInstant = instantFromDateInput(startDateEl.value, startTimeEl.value);
+  }
+
+  /* Project `minutes` after a start instant onto wall-clock parts in `tz`.
+   * The end is elapsed-time arithmetic on the instant; the wall parts are then
+   * derived from it. resolveWallLater re-reads a repeated-hour label as its
+   * LATER occurrence, so the projection round-trips to the intended instant;
+   * the loop only backstops zones/engines that still read back early. */
+  function projectedEndParts(startInstant, minutes, tz) {
+    var target = startInstant.getTime() + minutes;
+    var p = zoneParts(new Date(target), tz);
+    for (var i = 0; i < 6; i++) {
+      var reparsed = resolveWallLater(p.year, p.month, p.day, p.hour, p.minute, tz);
+      if (reparsed.getTime() >= target) break;
+      target += 30 * 60000;
+      p = zoneParts(new Date(target), tz);
+    }
+    return p;
   }
 
   function keepEndAfterStart() {
@@ -463,22 +525,10 @@
       syncAllDayUI();
     } else {
       var newStart = instantFromDateInput(startDateEl.value, startTimeEl.value);
-      var end = instantFromDateInput(endDateEl.value, endTimeEl.value);
+      var end = instantFromDateInput(endDateEl.value, endTimeEl.value, true);
       if (newStart && end && prevStartInstant && newStart.getTime() >= end.getTime()) {
         var duration = Math.max(end.getTime() - prevStartInstant.getTime(), 60 * 60000);
-        var tz = timezoneEl.value || localTimeZone();
-        var projected = newStart.getTime() + duration;
-        var p = zoneParts(new Date(projected), tz);
-        /* Around a DST fall-back the projected wall clock can re-parse to the
-         * same (or an earlier) instant as the start, because the repeated hour
-         * is always read as its first occurrence. Step the projection forward
-         * until what readForm() would parse is strictly after the new start. */
-        for (var i = 0; i < 6; i++) {
-          var reparsed = zonedTimeToDate(p.year, p.month, p.day, p.hour, p.minute, tz);
-          if (reparsed.getTime() > newStart.getTime()) break;
-          projected += 30 * 60000;
-          p = zoneParts(new Date(projected), tz);
-        }
+        var p = projectedEndParts(newStart, duration, timezoneEl.value || localTimeZone());
         endDateEl.value = isoFromParts(p);
         endTimeEl.value = pad2(p.hour) + ':' + pad2(p.minute);
       }
@@ -489,8 +539,93 @@
   startTimeEl.addEventListener('change', keepEndAfterStart);
   /* The cached start instant is zone-dependent; re-read it when the zone changes
    * so a later start change measures duration from the correct instant. */
-  timezoneEl.addEventListener('change', rememberStartInstant);
+  timezoneEl.addEventListener('change', function () { rememberStartInstant(); syncDurationChips(); });
   $('timezone-filter').addEventListener('input', renderTimeZones);
+
+  /* ---------- duration chips ---------- */
+
+  /* The preset buttons are a convenience layer over the same start/end inputs:
+   * they never hold state of their own, syncDurationChips() derives the active
+   * chip from the controls every time anything rewrites them. */
+  function durationChips() {
+    return document.querySelectorAll('#duration-chips .chip');
+  }
+
+  /* All-day → All day; otherwise exactly 30/60/120 minutes → that chip; any
+   * other duration (a typed 90 min, a multi-day span) leaves none active. */
+  function syncDurationChips() {
+    var allDay = $('all-day').checked;
+    var minutes = null;
+    /* A half-entered range has no duration to match, so no timed chip is
+     * active while a required start/end time (or date) is still empty. */
+    if (!allDay && startDateEl.value && startTimeEl.value &&
+        endDateEl.value && endTimeEl.value) {
+      var start = instantFromDateInput(startDateEl.value, startTimeEl.value);
+      var end = instantFromDateInput(endDateEl.value, endTimeEl.value, true);
+      if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+      }
+    }
+    var chips = durationChips();
+    for (var i = 0; i < chips.length; i++) {
+      var chip = chips[i];
+      var on = chip.id === 'chip-all-day'
+        ? allDay
+        : String(minutes) === chip.getAttribute('data-minutes');
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
+
+  /* Set the end to start + `minutes` (the same zone/DST math the start-change
+   * auto-shift uses) and drop out of all-day mode first when needed. */
+  function applyDurationChip(minutes) {
+    /* A missing start cannot anchor the duration: point at the empty control
+     * instead of silently inventing midnight and lighting a chip. */
+    var allDay = $('all-day').checked;
+    var emptyEl = !startDateEl.value ? startDateEl
+      : (!allDay && !startTimeEl.value ? startTimeEl : null);
+    if (emptyEl) {
+      setFieldError(emptyEl.id, 'Pick a start date/time first.');
+      emptyEl.focus();
+      syncDurationChips();
+      return;
+    }
+    var box = $('all-day');
+    if (box.checked) {
+      box.checked = false;
+      /* Reuse the all-day change path so the time controls reappear. */
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    var start = instantFromDateInput(startDateEl.value, startTimeEl.value);
+    if (start && !isNaN(start.getTime())) {
+      var p = projectedEndParts(start, minutes * 60000, timezoneEl.value || localTimeZone());
+      endDateEl.value = isoFromParts(p);
+      endTimeEl.value = pad2(p.hour) + ':' + pad2(p.minute);
+      /* The rewritten end is valid again, so drop any stale inline error. */
+      clearFieldError('end-date');
+      clearFieldError('end-time');
+      rememberStartInstant();
+    }
+    syncDurationChips();
+  }
+
+  $('duration-chips').addEventListener('click', function (e) {
+    var chip = e.target.closest ? e.target.closest('.chip') : null;
+    if (!chip) return;
+    if (chip.id === 'chip-all-day') {
+      var box = $('all-day');
+      box.checked = !box.checked;
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+      syncDurationChips();
+      return;
+    }
+    applyDurationChip(parseInt(chip.getAttribute('data-minutes'), 10));
+  });
+
+  [startDateEl, startTimeEl, endDateEl, endTimeEl].forEach(function (el) {
+    el.addEventListener('input', syncDurationChips);
+    el.addEventListener('change', syncDurationChips);
+  });
 
   /* ---------- validation ---------- */
 
@@ -505,6 +640,9 @@
     if (!input) return;
     var wrap = input.closest ? input.closest('.field') : null;
     if (!wrap) return;
+    /* An error inside the collapsed "More options" box must never be invisible,
+     * so reveal the box before the caller moves focus into it. */
+    if (input.closest('#advanced-box')) $('advanced-box').open = true;
     var errId = fieldErrorId(fieldId);
     wrap.classList.add('invalid');
     input.setAttribute('aria-invalid', 'true');
@@ -569,10 +707,24 @@
     if (e.target && e.target.id) clearFieldError(e.target.id);
   });
 
+  /* A control inside a collapsed <details> is hidden and unfocusable, so open
+   * every closed ancestor before focus lands on it. */
+  function revealControl(el) {
+    var node = el.parentNode;
+    while (node && node !== document) {
+      if (node.tagName === 'DETAILS' && !node.open) node.open = true;
+      node = node.parentNode;
+    }
+  }
+
   function focusFirstInvalidField() {
     var controls = $('event-form').querySelectorAll('input, select, textarea');
     for (var i = 0; i < controls.length; i++) {
-      if (controls[i].getAttribute('aria-invalid') === 'true') { controls[i].focus(); return; }
+      if (controls[i].getAttribute('aria-invalid') === 'true') {
+        revealControl(controls[i]);
+        controls[i].focus();
+        return;
+      }
     }
   }
 
@@ -590,6 +742,16 @@
     for (var i = 0; i < inputs.length; i++) {
       var v = inputs[i].value.trim();
       if (v && !looksLikeEmail(v)) return inputs[i];
+    }
+    return null;
+  }
+
+  /* The attendee whose NAME carries a control character (the same condition
+   * ics.js rejects), so the library error can land on the right row. */
+  function firstInvalidAttendeeName() {
+    var inputs = document.querySelectorAll('#attendee-list .att-name');
+    for (var i = 0; i < inputs.length; i++) {
+      if (/[\u0000-\u001F\u007F]/.test(inputs[i].value)) return inputs[i];
     }
     return null;
   }
@@ -621,16 +783,46 @@
       focusFirstInvalidField();
       return true;
     }
+    if (/attendee name/.test(msg)) {
+      var nameInput = firstInvalidAttendeeName();
+      if (nameInput && nameInput.id) {
+        setFieldError(nameInput.id, 'Remove special characters from this attendee name.');
+        setStatus(generic, true);
+        revealControl(nameInput);
+        nameInput.focus();
+        return true;
+      }
+    }
     if (/attendee/.test(msg)) {
       var input = firstInvalidAttendeeEmail();
       if (input && input.id) {
         setFieldError(input.id, 'Enter a valid email address for this attendee.');
         setStatus(generic, true);
+        revealControl(input);
         input.focus();
         return true;
       }
     }
     return false;
+  }
+
+  /* ---------- advanced box ---------- */
+
+  /* Whether any control behind "More options" holds a non-default value. */
+  function advancedHasData() {
+    if ($('status').value !== 'CONFIRMED') return true;
+    if ($('transp').value === 'TRANSPARENT') return true;
+    if (Number($('priority').value) >= 1) return true;
+    if ($('url').value.trim()) return true;
+    if ($('categories').value.trim()) return true;
+    if ($('organizer-name').value.trim() || $('organizer-email').value.trim()) return true;
+    return document.querySelector('#attendee-list .attendee-row') !== null;
+  }
+
+  /* Filling the form (import, edit, samples) opens the box only when it holds
+   * something; an untouched form leaves it collapsed. */
+  function syncAdvancedBox() {
+    $('advanced-box').open = advancedHasData();
   }
 
   /* ---------- reading the form ---------- */
@@ -677,7 +869,7 @@
       if (endDateEl.value && endTimeEl.value) {
         var ed = parseDateInput(endDateEl.value);
         var et = parseTimeInput(endTimeEl.value);
-        opts.end = zonedTimeToDate(ed.year, ed.month, ed.day, et.hour, et.minute, tz);
+        opts.end = resolveWallLater(ed.year, ed.month, ed.day, et.hour, et.minute, tz);
         if (opts.start && opts.end <= opts.start) {
           errors['end-date'] = 'The end date/time must be after the start.';
           errors['end-time'] = 'The end date/time must be after the start.';
@@ -1032,7 +1224,7 @@
     row.className = 'attendee-row';
 
     var rowSeq = ++attendeeRowSeq;
-    row.appendChild(attendeeField('text', 'att-name', 'Name', 'Attendee name', a.name || ''));
+    row.appendChild(attendeeField('text', 'att-name', 'Name', 'Attendee name', a.name || '', 'att-name-' + rowSeq));
     row.appendChild(attendeeField('email', 'att-email', 'Email', 'Attendee email', a.email || '', 'att-email-' + rowSeq));
     row.appendChild(attendeeSelect('att-role', 'Attendee role', ATTENDEE_ROLES, a.role, 'REQ-PARTICIPANT'));
     row.appendChild(attendeeSelect('att-status', 'Attendee status', ATTENDEE_STATUSES, a.status, 'NEEDS-ACTION'));
@@ -1136,6 +1328,11 @@
 
     setOrganizer(ev.organizer);
     setAttendees(ev.attendees);
+    /* The chips are buttons, so they carry no state a snapshot could restore;
+     * derive them from the values just populated. */
+    syncDurationChips();
+    syncFreqChips();
+    syncAdvancedBox();
   }
 
   /* ---------- rendering ---------- */
@@ -1677,6 +1874,9 @@
       reminders: Array.prototype.map.call(reminderRows(), function (row) {
         return { value: row.querySelector('.reminder-value').value, unit: row.querySelector('.reminder-unit').value };
       }),
+      /* UI disclosure is not event data, but an undo should still put the box
+       * back the way the visitor had it. */
+      advancedOpen: $('advanced-box').open,
       /* Edit context travels with the draft so a samples undo can put the
        * visitor back into the same Update session, not a silent Add. */
       editingEvent: editingEvent,
@@ -1712,6 +1912,14 @@
     syncReminderUI();
     updateKeptHint();
     rememberStartInstant();
+    /* SnapshotForm does not capture the chip buttons, so mirror the restored
+     * select/checkbox/date values back onto them. */
+    syncDurationChips();
+    syncFreqChips();
+    /* Undo restores the exact disclosure state it captured; ordinary
+     * populate/import paths keep the data-driven syncAdvancedBox(). */
+    if (typeof snap.advancedOpen === 'boolean') $('advanced-box').open = snap.advancedOpen;
+    else syncAdvancedBox();
   }
 
   /* Re-enter the edit session a snapshot captured. Targets the same event by
@@ -1792,6 +2000,7 @@
         endTimeEl.value = toISOTime(next);
       }
       rememberStartInstant();
+      syncDurationChips();
       render();
       setStatus('Added "' + ev.options.title + '" to the calendar.');
     } catch (err) {
@@ -2465,6 +2674,8 @@
   syncAllDayUI();
   syncRecurUI();
   syncReminderUI();
+  syncDurationChips();
+  syncFreqChips();
   var restored = 0;
   var savedTotal = 0;
   var restoreFailed = false;

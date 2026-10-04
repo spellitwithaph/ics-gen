@@ -307,6 +307,70 @@ test('a DST spring-forward day keeps the TZID wall-clock time in emitted ICS', f
   assert.includes(earlier, 'DTSTART;TZID=America/New_York:20260308T013000');
 });
 
+test('an unambiguous zoned end still emits DTEND;TZID= wall-clock time', function () {
+  var text = unfold(
+    makeEvent({
+      title: 'NY winter',
+      start: ICS.zonedTimeToDate(2026, 1, 15, 12, 0, 'America/New_York'),
+      durationMinutes: 45,
+      timezone: 'America/New_York'
+    }).toString()
+  );
+  assert.includes(text, 'DTSTART;TZID=America/New_York:20260115T120000');
+  assert.includes(text, 'DTEND;TZID=America/New_York:20260115T124500');
+});
+
+test('an ambiguous zoned end wall time is emitted as a UTC DTEND', function () {
+  /* America/New_York falls back on 2026-11-01: the 01:30 wall clock happens
+   * twice (05:30Z EDT, then 06:30Z EST). A 00:30 start plus 2 hours ends at the
+   * SECOND occurrence, so a TZID'd wall clock would be read back as the first
+   * and the event would appear an hour short. */
+  var start = ICS.zonedTimeToDate(2026, 11, 1, 0, 30, 'America/New_York');
+  assert.eq(start.toISOString(), '2026-11-01T04:30:00.000Z', 'start is 00:30 EDT');
+
+  /* The library itself resolves that repeated wall clock to the earlier,
+   * unintended instant — exactly the consumer behavior DTEND must avoid. */
+  assert.eq(
+    ICS.zonedTimeToDate(2026, 11, 1, 1, 30, 'America/New_York').toISOString(),
+    '2026-11-01T05:30:00.000Z'
+  );
+
+  var text = unfold(
+    makeEvent({
+      title: 'Fall back',
+      start: start,
+      durationMinutes: 120,
+      timezone: 'America/New_York'
+    }).toString()
+  );
+  assert.includes(text, 'DTSTART;TZID=America/New_York:20261101T003000');
+  assert.includes(text, 'DTEND:20261101T063000Z', 'the ambiguous end is written as UTC');
+  assert.notOk(/DTEND;TZID=[^:]*:20261101T013000/.test(text), 'no ambiguous TZID DTEND is written');
+
+  /* The UTC end is unambiguous: it names exactly the app's 06:30Z instant,
+   * 120 elapsed minutes after the start. */
+  var end = new Date(Date.UTC(2026, 10, 1, 6, 30, 0));
+  assert.eq(end.toISOString(), '2026-11-01T06:30:00.000Z');
+  assert.eq((end.getTime() - start.getTime()) / 60000, 120, 'elapsed minutes are exactly 120');
+});
+
+test('a spring-forward end whose wall time is not repeated keeps DTEND;TZID', function () {
+  /* New York springs forward on 2026-03-08: 01:30 EST + 60min lands on 03:30
+   * EDT (the skipped 02:30 never exists), which is not an ambiguous wall time. */
+  var start = ICS.zonedTimeToDate(2026, 3, 8, 1, 30, 'America/New_York');
+  assert.eq(start.toISOString(), '2026-03-08T06:30:00.000Z');
+  var text = unfold(
+    makeEvent({
+      title: 'Spring forward',
+      start: start,
+      durationMinutes: 60,
+      timezone: 'America/New_York'
+    }).toString()
+  );
+  assert.includes(text, 'DTSTART;TZID=America/New_York:20260308T013000');
+  assert.includes(text, 'DTEND;TZID=America/New_York:20260308T033000');
+});
+
 test('timezone values containing control characters are rejected', function () {
   assert.throws(function () {
     makeEvent({ title: 'Bad', start: new Date('2026-01-05T10:00:00Z'), timezone: 'Bad\nZone' });

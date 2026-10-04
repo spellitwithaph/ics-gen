@@ -34,6 +34,21 @@ body {
 header { text-align: center; margin: 8px 0 24px; }
 header h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.02em; }
 header p { margin: 0 auto; max-width: 660px; color: var(--muted); }
+/* Trust badge under the tagline: small surface pill with a padlock. */
+header .trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px auto 0;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+header .trust-badge svg { flex: none; }
 
 main {
   display: grid;
@@ -54,8 +69,23 @@ main {
 }
 .panel h2 { margin: 0 0 14px; font-size: 16px; }
 
+/* Form section headers: light uppercase label with a hairline rule. */
+.form-section {
+  margin: 22px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#event-form > .form-section:first-of-type { margin-top: 0; }
+
 .field { margin-bottom: 14px; }
 .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+/* The title is the one deliberately large field. */
+#title { font-size: 17px; }
 .field input,
 .field select,
 .field textarea {
@@ -79,6 +109,7 @@ main {
 
 /* Keyboard focus for controls that have no visible focus style of their own. */
 .btn:focus-visible,
+.chip:focus-visible,
 summary:focus-visible,
 .check input:focus-visible,
 .day-check input:focus-visible,
@@ -151,6 +182,17 @@ textarea { resize: vertical; }
 .import-mode legend { font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 4px; }
 .import-mode .check { margin: 0 0 4px; }
 
+/* Advanced fields collapse behind a details styled like the import panel. */
+#advanced-box {
+  margin: 18px 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--surface);
+}
+#advanced-box > summary { padding: 10px 0; }
+#advanced-box[open] > summary { margin-bottom: 12px; }
+
 /* Import warnings/notes */
 #import-notes { margin: 0 0 14px; }
 #import-notes .import-notes > summary { font-size: 13px; }
@@ -165,12 +207,6 @@ textarea { resize: vertical; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-row.tri { grid-template-columns: repeat(3, 1fr); }
-/* When a tri row is down to its select alone (repeat "Does not repeat"),
- * span a two-column-style width — the same as the
- * Status select — instead of the first third of the row, which clips the
- * "Does not repeat" label. */
-.field-row.tri.single { grid-template-columns: 1fr; }
-@media (min-width: 561px) { .field-row.tri.single { max-width: calc(50% - 6px); } }
 @media (max-width: 560px) {
   .field-row, .field-row.tri { grid-template-columns: 1fr; }
 }
@@ -188,6 +224,30 @@ textarea { resize: vertical; }
   cursor: pointer;
 }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Chip groups: duration presets and the segmented repeat control. Pressed
+ * state lives entirely in aria-pressed, so the visual state can never drift
+ * from what assistive technology reports. */
+.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--text); }
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 
 /* Weekly day-of-week picker: an inline row of compact .check-style boxes. */
 .field-row .field.span-all { grid-column: 1 / -1; }
@@ -452,9 +512,11 @@ footer a { color: var(--accent); }
     box-shadow: 0 0 0 3px rgba(125, 162, 255, 0.28);
   }
 
-  /* White on #7da2ff fails AA — use the page background as the text color. */
+  /* White on #7da2ff fails AA — use the page background as the text color
+   * (the pressed chip shares the accent background). */
   .btn.primary,
-  .btn.copied {
+  .btn.copied,
+  .chip[aria-pressed="true"] {
     color: #0f1420;
   }
 
