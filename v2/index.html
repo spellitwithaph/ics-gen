@@ -84,6 +84,10 @@
     <h1>ICS Generator</h1>
     <p>Build calendar events in your browser and download a ready-to-import
     <code>.ics</code> file for Google Calendar, Outlook, or Apple Calendar.</p>
+    <p class="trust-badge">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="10.5" width="16" height="10.5" rx="2.5"></rect><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"></path></svg>
+      <span>Private — runs entirely in your browser</span>
+    </p>
   </header>
 
   <main>
@@ -141,8 +145,7 @@
           <label for="timezone">Time zone</label>
           <input id="timezone-filter" type="search" placeholder="Type to filter zones" aria-label="Filter time zones" autocomplete="off">
           <select id="timezone" aria-describedby="timezone-hint"></select>
-          <p class="hint" id="timezone-hint">Start and end times are read as wall-clock
-          time in this zone. Defaults to the zone your device reports.</p>
+          <p class="hint" id="timezone-hint">Times are entered as wall-clock time in this zone.</p>
         </div>
 
         <div class="field-row">
@@ -278,7 +281,7 @@
             <legend>Attendees</legend>
             <div id="attendee-list"></div>
             <button id="add-attendee-btn" class="btn ghost" type="button">Add attendee</button>
-            <p class="hint">Each attendee is written as an <code>ATTENDEE:mailto:</code> line.</p>
+            <p class="hint">Attendees are attached to the invitation; your calendar app emails them when you send it.</p>
           </fieldset>
         </details>
 

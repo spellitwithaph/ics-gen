@@ -34,6 +34,21 @@ body {
 header { text-align: center; margin: 8px 0 24px; }
 header h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.02em; }
 header p { margin: 0 auto; max-width: 660px; color: var(--muted); }
+/* Trust badge under the tagline: small surface pill with a padlock. */
+header .trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px auto 0;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+header .trust-badge svg { flex: none; }
 
 main {
   display: grid;
@@ -503,9 +518,11 @@ footer a { color: var(--accent); }
     box-shadow: 0 0 0 3px rgba(125, 162, 255, 0.28);
   }
 
-  /* White on #7da2ff fails AA — use the page background as the text color. */
+  /* White on #7da2ff fails AA — use the page background as the text color
+   * (the pressed chip shares the accent background). */
   .btn.primary,
-  .btn.copied {
+  .btn.copied,
+  .chip[aria-pressed="true"] {
     color: #0f1420;
   }
 
