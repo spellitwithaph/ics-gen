@@ -1596,6 +1596,10 @@
     var has = cal.events.length > 0;
     $('download-btn').disabled = !has;
     $('copy-btn').disabled = !has;
+    /* The download label carries the count so the bar's primary output action
+     * states how much it will export. Reset on every render (add, import,
+     * clear, undo), so it can never lag the list. */
+    $('download-btn').textContent = has ? 'Download .ics (' + cal.events.length + ')' : 'Download .ics';
     /* The preview starts expanded (see the `open` attribute in index.html) and
      * never auto-collapses; the visitor can still toggle it. */
 
