@@ -91,6 +91,8 @@ summary:focus-visible,
 }
 
 textarea { resize: vertical; }
+/* Zone filter sits directly above the select it narrows. */
+#timezone-filter { margin-bottom: 8px; }
 .field .hint { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
 
 /* Inline validation */
