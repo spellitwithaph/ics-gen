@@ -10,7 +10,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-10-04T04:37:24Z` (ISO 8601, UTC)
+> **Last updated:** `2026-10-04T04:50:20Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -28,13 +28,16 @@ v1 (each point is verifiable in `v2/app.js`, `v2/ics.js`, and
   edit), duplicate them with one click, and see them sorted by start date.
   Status messages and the event count are announced to screen readers
   (`role="status"` / `aria-live`). Removing, clearing, and loading samples show
-  an undo toast (about 8 seconds, paused while hovered or focused; Escape and
-  Ctrl/Cmd+Z also work) instead of confirm dialogs.
+  an undo toast (about 8 seconds, paused while hovered or focused) instead of
+  confirm dialogs. Escape only dismisses the toast (no undo); Ctrl/Cmd+Z
+  triggers the undo only while the toast is visible and focus is not inside an
+  editable control.
 - **Persistence** — events, the calendar name, the download filename, and the
   VTIMEZONE preference are saved in the browser's localStorage, so events are
-  restored on reload. Saved data is treated as untrusted: a payload that
-  cannot be fully restored never gets overwritten — storage stays locked until
-  a real list change.
+  restored on reload. Saved data is treated as untrusted: a failed or
+  unreadable restore leaves the saved data untouched and pauses saving until
+  the visitor makes an explicit change to the event list (add, edit, remove,
+  clear, import, or samples — including clearing an empty list).
 - **Form** — inline per-field validation with focus moved to the first invalid
   field; a weekly day-of-week picker plus occurrence-count and end-date
   recurrence ends; rules the form cannot represent exactly are preserved on
@@ -45,8 +48,12 @@ v1 (each point is verifiable in `v2/app.js`, `v2/ics.js`, and
   can be added or replace the current list; a calendar name from
   `X-WR-CALNAME` is picked up while the name field still shows the default.
 - **Output** — a Google Calendar link per event, optional VTIMEZONE blocks (an
-  opt-in checkbox; transitions are sampled across the years the events span —
-  approximate for zones with exotic history), and a custom download filename.
+  opt-in checkbox; transitions are sampled at the distinct UTC start-years of
+  each zone's events plus one margin year when the 40-year budget permits —
+  not every year an event or its recurrence touches; when distinct years
+  exceed the budget, the earliest 39 plus the latest are kept; explicit
+  `TZID=UTC` (and UTC-instanced) events get no block — approximate for zones
+  with exotic history), and a custom download filename.
 - **Appearance** — automatic dark mode (`prefers-color-scheme`), a preview
   wrap toggle, and a copy button on the preview.
 
@@ -178,7 +185,7 @@ Everything lives on the `IcsGenerator` global (or the Node `module.exports`).
 | --- | --- | --- |
 | `name` | `string` | Sets `X-WR-CALNAME` — the calendar title shown by Google/Apple. |
 | `desc` | `string` | Sets `X-WR-CALDESC`. |
-| `includeVtimezone` | `boolean` | **(v2)** Default `false`. Emits a best-effort `VTIMEZONE` block for every unique event `TZID` before the `VEVENT`s, so strict/offline clients can resolve the `TZID` without their own tz data. |
+| `includeVtimezone` | `boolean` | **(v2)** Default `false`. Emits a best-effort `VTIMEZONE` block for every unique event `TZID` before the `VEVENT`s, so strict/offline clients can resolve the `TZID` without their own tz data. Explicit `TZID=UTC` (and UTC-instanced) events get no block. Transitions are sampled at the distinct UTC start-years of that zone's events plus one margin year when the 40-year budget permits (not every year an event or its recurrence touches); when distinct years exceed the budget, the earliest 39 plus the latest are kept. Approximate for zones with exotic history. |
 
 Methods: `addEvent(options)` → `VEvent` · `updateEvent(indexOrEvent, options)` → `VEvent | false` **(v2)** · `removeEvent(indexOrEvent)` → `boolean` · `clear()` · `toString()` → full `.ics` text · `.events` array.
 
@@ -231,8 +238,9 @@ const { calendar, events, warnings, counts } = IcsGenerator.parse(icsText);
 and `priority` **(v2)**, and an `unsupported` list; `warnings` explains anything
 dropped or approximated — an unreadable `TRANSP` or `PRIORITY` value is
 ignored with a note (`Ignored an unreadable TRANSP value.` / `Ignored an
-unreadable PRIORITY value.`), as is a `DTEND` that is not after `DTSTART`
-(`DTEND is not after DTSTART; kept as-is.`).
+unreadable PRIORITY value.`). A `DTEND` that is not after `DTSTART` is kept
+rather than dropped — **(v2)** with the warning `DTEND is not after DTSTART;
+kept as-is.` (v1 keeps it silently).
 `parseEvents(text)` returns just the events. The reader handles line folding,
 quoted parameters, TEXT unescaping, `TZID` (IANA and common Windows/Outlook
 names), a `VTIMEZONE` fixed-offset fallback, `DURATION`, and all-day / floating
