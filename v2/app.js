@@ -688,6 +688,9 @@
     var cats = $('categories').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
     if (cats.length) opts.categories = cats;
     opts.status = $('status').value;
+    if ($('transp').value === 'TRANSPARENT') opts.transp = 'TRANSPARENT';
+    var priority = Number($('priority').value);
+    if (priority >= 1) opts.priority = priority;
 
     var freq = $('recur-freq').value;
     if (freq !== 'NONE') {
@@ -1029,6 +1032,8 @@
     $('url').value = ev.url || '';
     $('categories').value = (ev.categories || []).join(', ');
     $('status').value = /^(CONFIRMED|TENTATIVE|CANCELLED)$/.test(ev.status || '') ? ev.status : 'CONFIRMED';
+    $('transp').value = ev.transp === 'TRANSPARENT' ? 'TRANSPARENT' : 'OPAQUE';
+    $('priority').value = ev.priority >= 1 && ev.priority <= 9 ? String(ev.priority) : '0';
 
     var allDay = !!ev.allDay;
     $('all-day').checked = allDay;
@@ -1150,6 +1155,8 @@
         return 'remind ' + humanizeDuration(a.trigger) + ' before';
       }).join(' & '));
     }
+    if (o.transp === 'TRANSPARENT') bits.push('Free');
+    if (o.priority >= 1) bits.push('priority ' + o.priority);
     if (o.location) bits.push(o.location);
     if (o.organizer && o.organizer.email) bits.push('by ' + (o.organizer.name || o.organizer.email));
     if (Array.isArray(o.attendees) && o.attendees.length) {
@@ -1813,6 +1820,8 @@
     if (ev.location) o.location = ev.location;
     if (ev.url && looksLikeHttpUrl(ev.url)) o.url = ev.url;
     if (/^(CONFIRMED|TENTATIVE|CANCELLED)$/.test(ev.status || '')) o.status = ev.status;
+    if (ev.transp === 'OPAQUE' || ev.transp === 'TRANSPARENT') o.transp = ev.transp;
+    if (ev.priority >= 1 && ev.priority <= 9) o.priority = ev.priority;
     if (ev.categories && ev.categories.length) o.categories = ev.categories;
     if (ev.rrule) o.rrule = ev.rrule;
     if (ev.alarms && ev.alarms.length) o.alarms = ev.alarms;

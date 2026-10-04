@@ -19,6 +19,44 @@ function ics(lines) {
   return lines.join('\r\n');
 }
 
+/* ---------- availability & priority ---------- */
+
+test('TRANSP and PRIORITY survive generator-parser-generator round trip', function () {
+  ['OPAQUE', 'TRANSPARENT'].forEach(function (transp) {
+    [1, 9].forEach(function (priority) {
+      var cal = new ICS.Calendar();
+      cal.addEvent({ title: 'Fields', start: new Date('2026-01-05T10:00:00Z'), transp: transp, priority: priority });
+      var ev = parse(cal.toString()).events[0];
+      assert.eq(ev.transp, transp);
+      assert.eq(ev.priority, priority);
+      assert.ok(ev.unsupported.indexOf('TRANSP') === -1);
+      assert.ok(ev.unsupported.indexOf('PRIORITY') === -1);
+      var rebuilt = new ICS.Calendar();
+      rebuilt.addEvent(ev);
+      assert.includes(rebuilt.toString(), 'TRANSP:' + transp);
+      assert.includes(rebuilt.toString(), 'PRIORITY:' + priority);
+    });
+  });
+});
+
+test('absent TRANSP and PRIORITY remain absent in parsed objects', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({ title: 'Minimal', start: new Date('2026-01-05T10:00:00Z') });
+  var ev = parse(cal.toString()).events[0];
+  assert.ok(!Object.prototype.hasOwnProperty.call(ev, 'transp'));
+  assert.ok(!Object.prototype.hasOwnProperty.call(ev, 'priority'));
+});
+
+test('invalid TRANSP and zero or invalid PRIORITY are ignored on parse', function () {
+  ['0', '10', '-1', '1.5', 'garbage'].forEach(function (priority) {
+    var ev = parse(ics(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'SUMMARY:Invalid',
+      'DTSTART:20260105T100000Z', 'TRANSP:BUSY', 'PRIORITY:' + priority,
+      'END:VEVENT', 'END:VCALENDAR'])).events[0];
+    assert.ok(!Object.prototype.hasOwnProperty.call(ev, 'transp'));
+    assert.ok(!Object.prototype.hasOwnProperty.call(ev, 'priority'));
+  });
+});
+
 /* ---------- unfolding & value parsing ---------- */
 
 test('folded continuation lines are unfolded into one logical line', function () {

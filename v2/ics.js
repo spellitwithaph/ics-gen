@@ -324,6 +324,12 @@
     if (options.timezone) assertTimeZone(options.timezone);
     if (options.rrule) rejectControlChars(String(options.rrule), 'event "rrule"');
     if (options.status) rejectControlChars(String(options.status), 'event "status"');
+    if (options.transp !== undefined && options.transp !== 'OPAQUE' && options.transp !== 'TRANSPARENT') {
+      throw new Error('ICS Generator: event "transp" must be OPAQUE or TRANSPARENT.');
+    }
+    if (options.priority !== undefined && (!Number.isInteger(options.priority) || options.priority < 0 || options.priority > 9)) {
+      throw new Error('ICS Generator: event "priority" must be an integer from 0 to 9.');
+    }
     (options.alarms || []).forEach(function (alarm) {
       if (!alarm) return;
       if (alarm.action) rejectControlChars(String(alarm.action), 'alarm action');
@@ -346,7 +352,9 @@
    * VEvent
    * options: see README "Event options" — title (required), start (required),
    * end, durationMinutes, allDay, timezone, uid, description, location, url,
-   * status, categories, rrule, alarms, attendees, organizer.
+   * status, categories, rrule, alarms, attendees, organizer,
+   * transp (OPAQUE/busy by default, or TRANSPARENT/free; omitted unless set),
+   * priority (integer 0..9; 0/undefined omitted, 1 highest and 9 lowest).
    */
   function VEvent(options) {
     options = options || {};
@@ -369,6 +377,7 @@
 
   VEvent.prototype.toLines = function () {
     var o = this.options;
+    validateEventOptions(o);
     var tz = o.timezone;
     if (tz) rejectControlChars(tz, 'event "timezone"');
     var lines = ['BEGIN:VEVENT'];
@@ -397,6 +406,8 @@
       rejectControlChars(String(o.status), 'event "status"');
       lines.push('STATUS:' + String(o.status).toUpperCase());
     }
+    if (o.transp !== undefined) lines.push('TRANSP:' + o.transp);
+    if (o.priority >= 1) lines.push('PRIORITY:' + o.priority);
     if (Array.isArray(o.categories) && o.categories.length) {
       lines.push('CATEGORIES:' + o.categories.map(escapeText).join(','));
     }

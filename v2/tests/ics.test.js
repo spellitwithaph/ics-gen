@@ -33,6 +33,55 @@ function calendarWith(options) {
   return calendar;
 }
 
+/* ---------- availability & priority ---------- */
+
+function fieldEvent(fields) {
+  return makeEvent(Object.assign({ title: 'Fields', start: new Date('2026-01-05T10:00:00Z') }, fields));
+}
+
+test('explicit OPAQUE and TRANSPARENT emit TRANSP', function () {
+  ['OPAQUE', 'TRANSPARENT'].forEach(function (transp) {
+    assert.includes(fieldEvent({ transp: transp }).toString(), 'TRANSP:' + transp);
+  });
+});
+
+test('omitted transp emits no TRANSP line', function () {
+  assert.ok(fieldEvent({}).toString().indexOf('TRANSP:') === -1);
+});
+
+test('invalid transp values are rejected eagerly', function () {
+  ['BUSY', 'transparent', '', null, 'OPAQUE\r\nPRIORITY:1'].forEach(function (transp) {
+    assert.throws(function () { fieldEvent({ transp: transp }); }, /event "transp"/);
+  });
+});
+
+test('priority 1 and 9 emit PRIORITY', function () {
+  [1, 9].forEach(function (priority) {
+    assert.includes(fieldEvent({ priority: priority }).toString(), 'PRIORITY:' + priority);
+  });
+});
+
+test('priority zero and undefined emit no PRIORITY line', function () {
+  [0, undefined].forEach(function (priority) {
+    assert.ok(fieldEvent({ priority: priority }).toString().indexOf('PRIORITY:') === -1);
+  });
+});
+
+test('invalid priorities are rejected eagerly', function () {
+  [10, -1, 1.5, NaN, Infinity, '1', null].forEach(function (priority) {
+    assert.throws(function () { fieldEvent({ priority: priority }); }, /event "priority"/);
+  });
+});
+
+test('mutated transp and priority are revalidated during serialization', function () {
+  var ev = fieldEvent({ transp: 'OPAQUE', priority: 1 });
+  ev.options.transp = 'BUSY';
+  assert.throws(function () { ev.toString(); }, /event "transp"/);
+  ev.options.transp = 'TRANSPARENT';
+  ev.options.priority = 10;
+  assert.throws(function () { ev.toString(); }, /event "priority"/);
+});
+
 /* ---------- escaping ---------- */
 
 test('escapeText escapes backslashes', function () {
