@@ -220,8 +220,14 @@
    * several times faster than reconstructing wall-clock parts; transition
    * sampling issues thousands of these probes per render, so the formatter is
    * cached per zone and the offset text is parsed rather than derived.
+   *
+   * 'longOffset' is newer than the rest of this module's Intl use. A zone whose
+   * engine cannot report it (the constructor or format() throws a RangeError,
+   * or the option is silently ignored) is marked and every later probe uses the
+   * wall-clock diff fallback below, so toString() never throws over an offset.
    */
   var zoneOffsetFormatterCache = Object.create(null);
+  var zoneOffsetFallbackZones = Object.create(null);
 
   function zoneOffsetFormatter(timeZone) {
     var formatter = zoneOffsetFormatterCache[timeZone];
@@ -232,13 +238,34 @@
     return formatter;
   }
 
+  /* Fallback offset probe: how far the zone's local clock sits from UTC at
+   * `ts`, rebuilt from the cached wall-clock-parts formatter. Exact for any
+   * zone whose parts Intl can produce; only slower than the long-offset path. */
+  function zoneOffsetMinutesFromParts(ts, timeZone) {
+    var seconds = Math.floor(ts / 1000) * 1000;
+    var p = zoneParts(new Date(seconds), timeZone);
+    var asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    return Math.round((asUTC - seconds) / 60000);
+  }
+
   function zoneOffsetMinutes(ts, timeZone) {
-    var m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(
-      zoneOffsetFormatter(timeZone).format(new Date(ts))
-    );
-    if (!m) return 0; /* a bare 'GMT' means UTC */
-    var mins = Number(m[2]) * 60 + Number(m[3] || 0);
-    return m[1] === '-' ? -mins : mins;
+    if (!zoneOffsetFallbackZones[timeZone]) {
+      try {
+        var text = zoneOffsetFormatter(timeZone).format(new Date(ts));
+        var m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(text);
+        if (m) {
+          var mins = Number(m[2]) * 60 + Number(m[3] || 0);
+          return m[1] === '-' ? -mins : mins;
+        }
+        if (/\bGMT\b/.test(text)) return 0; /* a bare 'GMT' means UTC */
+        /* No offset came back (older engines ignore an unsupported
+         * timeZoneName), so stop probing this zone entirely. */
+        zoneOffsetFallbackZones[timeZone] = true;
+      } catch (e) {
+        zoneOffsetFallbackZones[timeZone] = true;
+      }
+    }
+    return zoneOffsetMinutesFromParts(ts, timeZone);
   }
 
   /* Signed ±HHMM offset token used by TZOFFSETFROM/TZOFFSETTO. */

@@ -995,3 +995,52 @@ test('VTIMEZONE: event years beyond the old sampling cap are still emitted', fun
   assert.eq(resolveWithComponents(comps, naive), Date.UTC(2040, 5, 15, 14, 0, 0),
     'the 2040 June event must land on EDT (-0400), not the truncated EST offset');
 });
+
+test('VTIMEZONE: offsets still resolve when Intl longOffset is unsupported', function () {
+  var RealDateTimeFormat = Intl.DateTimeFormat;
+  var modulePath = require.resolve('../ics.js');
+
+  /* Simulate an engine without the 'longOffset' timeZoneName (its constructor
+   * throws a RangeError). Rebuild the module so its per-zone formatter caches
+   * start empty, and keep the hostile Intl in place while it renders. */
+  function LongOffsetHostile(locale, options) {
+    if (options && options.timeZoneName === 'longOffset') {
+      throw new RangeError('timeZoneName "longOffset" is not supported');
+    }
+    return new RealDateTimeFormat(locale, options);
+  }
+
+  Intl.DateTimeFormat = LongOffsetHostile;
+  try {
+    delete require.cache[modulePath];
+    var FallbackICS = require('../ics.js');
+    var cal = new FallbackICS.Calendar();
+    cal.addEvent({
+      title: 'NY',
+      start: new Date('2026-07-15T14:00:00Z'),
+      durationMinutes: 60,
+      timezone: 'America/New_York'
+    });
+    cal.includeVtimezone = true;
+
+    var comps = vtimezoneComponents(cal.toString());
+    var byStart = {};
+    comps.forEach(function (c) { byStart[c.props.DTSTART] = c; });
+
+    assert.ok(byStart['20260308T020000'], 'spring-forward onset must survive the fallback');
+    assert.eq(byStart['20260308T020000'].props.TZOFFSETFROM, '-0500');
+    assert.eq(byStart['20260308T020000'].props.TZOFFSETTO, '-0400');
+    assert.ok(byStart['20261101T020000'], 'fall-back onset must survive the fallback');
+    assert.eq(byStart['20261101T020000'].props.TZOFFSETFROM, '-0400');
+    assert.eq(byStart['20261101T020000'].props.TZOFFSETTO, '-0500');
+
+    /* Block-only resolution still reaches the true UTC instant. */
+    var naive = Date.UTC(2026, 6, 15, 10, 0, 0);
+    assert.eq(resolveWithComponents(comps, naive), Date.UTC(2026, 6, 15, 14, 0, 0),
+      'the wall-clock fallback must yield the same offset as longOffset');
+  } finally {
+    Intl.DateTimeFormat = RealDateTimeFormat;
+    delete require.cache[modulePath];
+    require('../ics.js'); /* restore the shared module instance in the cache */
+  }
+});
