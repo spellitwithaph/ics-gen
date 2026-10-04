@@ -421,6 +421,9 @@
 
     if (end) {
       ev.end = end.kind === 'date' ? end.parts : end.date;
+      if (!allDay && ev.end instanceof Date && ev.start instanceof Date && ev.end.getTime() <= ev.start.getTime()) {
+        warnings.push('DTEND is not after DTSTART; kept as-is.');
+      }
     } else {
       var durProp = propNamed(comp, 'DURATION');
       var mins = durProp ? parseDurationMinutes(durProp.value) : null;

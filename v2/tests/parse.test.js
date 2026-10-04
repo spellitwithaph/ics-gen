@@ -208,6 +208,24 @@ test('DURATION supplies the event end when DTEND is absent', function () {
   assert.eq(parse(text).events[0].end.toISOString(), '2026-01-05T11:30:00.000Z');
 });
 
+test('a timed DTEND at or before DTSTART is kept with a warning', function () {
+  [{ dtend: '20260105T090000Z', label: 'before' },
+    { dtend: '20260105T100000Z', label: 'equal' }].forEach(function (c) {
+    var result = parse(ics([
+      'BEGIN:VCALENDAR',
+      'BEGIN:VEVENT',
+      'UID:x',
+      'SUMMARY:Backwards',
+      'DTSTART:20260105T100000Z',
+      'DTEND:' + c.dtend,
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ]));
+    assert.eq(result.events.length, 1, c.label + ': the event is still imported');
+    assert.includes(result.warnings, 'DTEND is not after DTSTART; kept as-is.');
+  });
+});
+
 /* ---------- VTIMEZONE fallback ---------- */
 
 test('a VTIMEZONE fixed offset is used when Intl does not know the TZID', function () {
