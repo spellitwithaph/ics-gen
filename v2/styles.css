@@ -490,7 +490,7 @@ textarea { resize: vertical; }
   line-height: 1.2;
 }
 .event-card-body { min-width: 0; }
-.event-card-body strong { display: block; font-size: 14px; }
+.event-card-body strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
 .event-card-body small {
   display: block;
   margin-top: 2px;
