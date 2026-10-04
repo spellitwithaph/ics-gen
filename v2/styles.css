@@ -60,6 +60,48 @@ main {
  * box cannot push the track past the viewport on narrow screens. */
 @media (max-width: 920px) { main { grid-template-columns: minmax(0, 1fr); } }
 
+/* ---------- Sticky event panel on wide screens ----------
+ * With the two panels side by side (above 920px) the event list keeps the
+ * top of the viewport as the form scrolls, so events and the toolbar stay
+ * reachable while editing. Long lists scroll inside the panel (max-height +
+ * overflow) instead of being clipped; the nested .ics preview keeps its own
+ * max-height/overflow and scrolls independently. */
+@media (min-width: 921px) {
+  main > .panel:nth-of-type(2) {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    scroll-padding-top: 274px; /* 260px toolbar + 14px margin. */
+  }
+  /* Keep the toolbar (calendar name, buttons, count) in view while a long
+   * event list scrolls inside the pinned panel. The extra top padding plus
+   * the matching negative margin extend its background across the panel's
+   * own 20px padding, so scrolling content never peeks above it. */
+  main > .panel:nth-of-type(2) > .toolbar {
+    position: sticky;
+    top: -20px;
+    z-index: 1;
+    margin-top: -20px;
+    padding: 20px 0 12px;
+    background: var(--panel);
+    flex-wrap: nowrap;
+  }
+  /* Keep the buttons row single-line: at 921-940px with a classic scrollbar
+   * gutter the row was 2px too narrow and used to wrap to two lines, growing
+   * the toolbar to ~312px - past the 274px scroll-padding-top - so Shift+Tab
+   * could focus a list button hidden behind the toolbar. The negative right
+   * margin lets the row borrow the panel's right padding as headroom (the
+   * row has no background, so this is invisible and buttons keep their
+   * position); nowrap plus nowrap button labels keep the toolbar height
+   * constant. Mobile (<=920px) still wraps freely. */
+  main > .panel:nth-of-type(2) > .toolbar > .toolbar-buttons {
+    flex-wrap: nowrap;
+    margin-right: -20px;
+  }
+  main > .panel:nth-of-type(2) > .toolbar .btn { white-space: nowrap; }
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -319,6 +361,48 @@ textarea { resize: vertical; }
 
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 
+/* ---------- Small-screen sticky action bar ----------
+ * On phones the form's Add/Update row is pinned to the bottom of the viewport
+ * so the primary action is always reachable without scrolling back. Only
+ * #event-form's row is pinned: #import-box has its own .form-actions, and
+ * pinning that too would stack two fixed bars. The fixed bar is out of flow,
+ * so body reserves room (padding-bottom) for it at the end of the document,
+ * and the undo toast (also fixed) is raised clear of it. */
+@media (max-width: 920px) {
+  html { scroll-padding-bottom: 148px; }
+  body { padding-bottom: 132px; }
+  #event-form > .form-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    margin: 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    box-shadow: 0 -6px 18px -12px rgba(16, 24, 40, 0.25);
+    border-radius: 0;
+    flex-wrap: wrap;
+  }
+  /* The status line wraps inside the bar (clamped to two lines so an
+   * arbitrarily long message cannot grow the fixed bar past the reserved
+   * space and the toast offset below). Screen readers still get the full
+   * text from the role="status" region. */
+  #event-form > .form-actions .status-msg {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  /* Measured: a two-line status bar is ~116px tall, so 84px would tuck the
+   * toast behind it. 124px clears the tallest bar with a small gap. */
+  body .undo-toast { bottom: calc(124px + env(safe-area-inset-bottom)); }
+}
+
 .btn {
   font: inherit;
   font-weight: 600;
@@ -337,6 +421,16 @@ textarea { resize: vertical; }
 .btn.copied { background: var(--accent); border-color: var(--accent); color: #fff; }
 #copy-btn { min-width: 92px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Touch targets: coarse pointers (phones/tablets) get 44px-minimum tappable
+ * controls (WCAG 2.5.5). Only the padding floor changes; the desktop density
+ * behind a fine pointer is untouched. */
+@media (pointer: coarse) {
+  .field input,
+  .field select,
+  .field textarea { min-height: 44px; }
+  .btn { min-height: 44px; padding-top: 11px; padding-bottom: 11px; }
+}
 
 .toolbar {
   display: flex;
@@ -382,7 +476,9 @@ textarea { resize: vertical; }
   color: var(--accent);
 }
 #event-list .gcal-link:hover { color: var(--accent-strong); border-color: var(--border-strong); }
-#event-list .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+#event-list .empty { display: block; color: var(--muted); font-size: 13px; padding: 8px 2px; }
+#event-list .empty-msg { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--text); }
+#event-list .empty-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* VTIMEZONE emission toggle (preview-side option) */
 .vtimezone-toggle { margin: 4px 0 10px; font-size: 13px; font-weight: 500; align-items: flex-start; }
