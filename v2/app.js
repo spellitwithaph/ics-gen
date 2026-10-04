@@ -1726,18 +1726,38 @@
   });
 
   /* Calendar.toString reads options.name each time; no library setter needed.
-   * These toolbar inputs are deliberately outside the event form snapshots. */
+   * These toolbar inputs are deliberately outside the event form snapshots.
+   * The name is trimmed so a whitespace-only value emits no X-WR-CALNAME. */
   function syncCalendarName() {
-    cal.options.name = $('calendar-name').value;
+    cal.options.name = $('calendar-name').value.trim();
   }
 
-  $('calendar-name').addEventListener('input', function () { syncCalendarName(); render(); });
-  $('calendar-name').addEventListener('change', function () { syncCalendarName(); render(); });
+  /* Every keystroke would rebuild the list, preview and (when unlocked) the
+   * save, so the input handler is debounced; change/blur flushes immediately. */
+  var calendarNameTimer = null;
+  function commitCalendarName() {
+    syncCalendarName();
+    render();
+  }
+  $('calendar-name').addEventListener('input', function () {
+    if (calendarNameTimer) clearTimeout(calendarNameTimer);
+    calendarNameTimer = setTimeout(function () {
+      calendarNameTimer = null;
+      commitCalendarName();
+    }, 300);
+  });
+  $('calendar-name').addEventListener('change', function () {
+    if (calendarNameTimer) { clearTimeout(calendarNameTimer); calendarNameTimer = null; }
+    commitCalendarName();
+  });
   $('download-filename').addEventListener('input', saveEvents);
   $('download-filename').addEventListener('change', saveEvents);
 
   $('download-btn').addEventListener('click', function () {
-    var filename = $('download-filename').value.trim() || cal.events[0].options.title;
+    /* Strip a typed .ics suffix before slugifying so 'invite.ics' does not
+     * become 'invite-ics.ics'. */
+    var raw = $('download-filename').value.trim();
+    var filename = raw ? raw.replace(/\.ics$/i, '') : cal.events[0].options.title;
     IcsGenerator.download(slugify(filename) + '.ics', cal.toString());
     setStatus('Download started.');
   });
@@ -1935,6 +1955,18 @@
     if (!result.events.length) {
       setImportStatus('No events found in ' + (sourceLabel || 'that text') + '.', true);
       return;
+    }
+
+    /* An imported calendar name fills the input only while it still shows the
+     * built-in default, so a customized name is never overwritten. */
+    var importedName = result.calendar && typeof result.calendar.name === 'string'
+      ? result.calendar.name.trim() : '';
+    if (importedName) {
+      var currentName = $('calendar-name').value.trim();
+      if (!currentName || currentName === 'My Events') {
+        $('calendar-name').value = importedName.slice(0, 60);
+        syncCalendarName();
+      }
     }
 
     var added = 0;
