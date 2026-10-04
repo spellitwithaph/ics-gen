@@ -94,6 +94,7 @@ main {
 
 /* Keyboard focus for controls that have no visible focus style of their own. */
 .btn:focus-visible,
+.chip:focus-visible,
 summary:focus-visible,
 .check input:focus-visible,
 .day-check input:focus-visible,
@@ -203,6 +204,30 @@ textarea { resize: vertical; }
   cursor: pointer;
 }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Chip groups: duration presets and the segmented repeat control. Pressed
+ * state lives entirely in aria-pressed, so the visual state can never drift
+ * from what assistive technology reports. */
+.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--text); }
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 
 /* Weekly day-of-week picker: an inline row of compact .check-style boxes. */
 .field-row .field.span-all { grid-column: 1 / -1; }

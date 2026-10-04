@@ -141,7 +141,7 @@
 
         <h3 class="form-section">When</h3>
 
-        <label class="check"><input id="all-day" type="checkbox"> All-day event</label>
+        <label class="check" hidden><input id="all-day" type="checkbox"> All-day event</label>
 
         <div class="field" id="field-timezone">
           <label for="timezone">Time zone</label>
@@ -171,12 +171,28 @@
           <p class="hint" id="all-day-end-hint" hidden>All-day end dates are exclusive: an event ending Jan 6 runs through Jan 5 only.</p>
         </div>
 
+        <div class="field">
+          <div class="chip-group" id="duration-chips" role="group" aria-label="Duration">
+            <button type="button" class="chip" data-minutes="30" aria-pressed="false">30 min</button>
+            <button type="button" class="chip" data-minutes="60" aria-pressed="false">1 hour</button>
+            <button type="button" class="chip" data-minutes="120" aria-pressed="false">2 hours</button>
+            <button type="button" class="chip" id="chip-all-day" aria-pressed="false">All day</button>
+          </div>
+        </div>
+
         <h3 class="form-section">Repeat &amp; Remind</h3>
 
         <div class="field-row tri" id="recur-row">
           <div class="field">
-            <label for="recur-freq">Repeat</label>
-            <select id="recur-freq">
+            <label for="recur-freq" id="recur-freq-label">Repeat</label>
+            <div class="chip-group" id="recur-freq-chips" role="group" aria-labelledby="recur-freq-label">
+              <button type="button" class="chip" data-freq="NONE" aria-pressed="true">Never</button>
+              <button type="button" class="chip" data-freq="DAILY" aria-pressed="false">Daily</button>
+              <button type="button" class="chip" data-freq="WEEKLY" aria-pressed="false">Weekly</button>
+              <button type="button" class="chip" data-freq="MONTHLY" aria-pressed="false">Monthly</button>
+              <button type="button" class="chip" data-freq="YEARLY" aria-pressed="false">Yearly</button>
+            </div>
+            <select id="recur-freq" hidden>
               <option value="NONE">Does not repeat</option>
               <option value="DAILY">Daily</option>
               <option value="WEEKLY">Weekly</option>

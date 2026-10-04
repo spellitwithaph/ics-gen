@@ -410,6 +410,17 @@
     $('recur-row').classList.toggle('single', off);
   }
 
+  /* The segmented control mirrors the (visually hidden) #recur-freq select,
+   * which stays the single source of truth for validation and the RRULE. */
+  function syncFreqChips() {
+    var freq = $('recur-freq').value;
+    var chips = document.querySelectorAll('#recur-freq-chips .chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].setAttribute('aria-pressed',
+        chips[i].getAttribute('data-freq') === freq ? 'true' : 'false');
+    }
+  }
+
   function reminderRows() {
     return document.querySelectorAll('#reminder-rows .reminder-row');
   }
@@ -428,7 +439,16 @@
   $('recur-freq').addEventListener('change', function () {
     if ($('recur-freq').value === 'WEEKLY') defaultBydayToStart();
     syncRecurUI();
+    syncFreqChips();
     updateKeptHint();
+  });
+  $('recur-freq-chips').addEventListener('click', function (e) {
+    var chip = e.target.closest ? e.target.closest('.chip') : null;
+    if (!chip) return;
+    var sel = $('recur-freq');
+    sel.value = chip.getAttribute('data-freq');
+    /* Reuse the select's own change path (default BYDAY, visibility, hint). */
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
   });
   $('recur-end').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
   $('recur-count').addEventListener('change', updateKeptHint);
@@ -457,6 +477,23 @@
     prevStartInstant = instantFromDateInput(startDateEl.value, startTimeEl.value);
   }
 
+  /* Project `minutes` after a start instant onto wall-clock parts in `tz`.
+   * Around a DST fall-back the projected wall clock can re-parse to the same
+   * (or an earlier) instant as the start, because the repeated hour is always
+   * read as its first occurrence; step the projection forward until what
+   * readForm() would parse is strictly after the start. */
+  function projectedEndParts(startInstant, minutes, tz) {
+    var projected = startInstant.getTime() + minutes;
+    var p = zoneParts(new Date(projected), tz);
+    for (var i = 0; i < 6; i++) {
+      var reparsed = zonedTimeToDate(p.year, p.month, p.day, p.hour, p.minute, tz);
+      if (reparsed.getTime() > startInstant.getTime()) break;
+      projected += 30 * 60000;
+      p = zoneParts(new Date(projected), tz);
+    }
+    return p;
+  }
+
   function keepEndAfterStart() {
     if ($('all-day').checked) {
       /* Plain date strings: end <= start becomes start + 1 day (syncAllDayUI). */
@@ -466,19 +503,7 @@
       var end = instantFromDateInput(endDateEl.value, endTimeEl.value);
       if (newStart && end && prevStartInstant && newStart.getTime() >= end.getTime()) {
         var duration = Math.max(end.getTime() - prevStartInstant.getTime(), 60 * 60000);
-        var tz = timezoneEl.value || localTimeZone();
-        var projected = newStart.getTime() + duration;
-        var p = zoneParts(new Date(projected), tz);
-        /* Around a DST fall-back the projected wall clock can re-parse to the
-         * same (or an earlier) instant as the start, because the repeated hour
-         * is always read as its first occurrence. Step the projection forward
-         * until what readForm() would parse is strictly after the new start. */
-        for (var i = 0; i < 6; i++) {
-          var reparsed = zonedTimeToDate(p.year, p.month, p.day, p.hour, p.minute, tz);
-          if (reparsed.getTime() > newStart.getTime()) break;
-          projected += 30 * 60000;
-          p = zoneParts(new Date(projected), tz);
-        }
+        var p = projectedEndParts(newStart, duration, timezoneEl.value || localTimeZone());
         endDateEl.value = isoFromParts(p);
         endTimeEl.value = pad2(p.hour) + ':' + pad2(p.minute);
       }
@@ -491,6 +516,74 @@
    * so a later start change measures duration from the correct instant. */
   timezoneEl.addEventListener('change', rememberStartInstant);
   $('timezone-filter').addEventListener('input', renderTimeZones);
+
+  /* ---------- duration chips ---------- */
+
+  /* The preset buttons are a convenience layer over the same start/end inputs:
+   * they never hold state of their own, syncDurationChips() derives the active
+   * chip from the controls every time anything rewrites them. */
+  function durationChips() {
+    return document.querySelectorAll('#duration-chips .chip');
+  }
+
+  /* All-day → All day; otherwise exactly 30/60/120 minutes → that chip; any
+   * other duration (a typed 90 min, a multi-day span) leaves none active. */
+  function syncDurationChips() {
+    var allDay = $('all-day').checked;
+    var minutes = null;
+    if (!allDay) {
+      var start = instantFromDateInput(startDateEl.value, startTimeEl.value);
+      var end = instantFromDateInput(endDateEl.value, endTimeEl.value);
+      if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+      }
+    }
+    var chips = durationChips();
+    for (var i = 0; i < chips.length; i++) {
+      var chip = chips[i];
+      var on = chip.id === 'chip-all-day'
+        ? allDay
+        : String(minutes) === chip.getAttribute('data-minutes');
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
+
+  /* Set the end to start + `minutes` (the same zone/DST math the start-change
+   * auto-shift uses) and drop out of all-day mode first when needed. */
+  function applyDurationChip(minutes) {
+    var box = $('all-day');
+    if (box.checked) {
+      box.checked = false;
+      /* Reuse the all-day change path so the time controls reappear. */
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    var start = instantFromDateInput(startDateEl.value, startTimeEl.value);
+    if (start && !isNaN(start.getTime())) {
+      var p = projectedEndParts(start, minutes * 60000, timezoneEl.value || localTimeZone());
+      endDateEl.value = isoFromParts(p);
+      endTimeEl.value = pad2(p.hour) + ':' + pad2(p.minute);
+      rememberStartInstant();
+    }
+    syncDurationChips();
+  }
+
+  $('duration-chips').addEventListener('click', function (e) {
+    var chip = e.target.closest ? e.target.closest('.chip') : null;
+    if (!chip) return;
+    if (chip.id === 'chip-all-day') {
+      var box = $('all-day');
+      box.checked = !box.checked;
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+      syncDurationChips();
+      return;
+    }
+    applyDurationChip(parseInt(chip.getAttribute('data-minutes'), 10));
+  });
+
+  [startDateEl, startTimeEl, endDateEl, endTimeEl].forEach(function (el) {
+    el.addEventListener('input', syncDurationChips);
+    el.addEventListener('change', syncDurationChips);
+  });
 
   /* ---------- validation ---------- */
 
@@ -1136,6 +1229,10 @@
 
     setOrganizer(ev.organizer);
     setAttendees(ev.attendees);
+    /* The chips are buttons, so they carry no state a snapshot could restore;
+     * derive them from the values just populated. */
+    syncDurationChips();
+    syncFreqChips();
   }
 
   /* ---------- rendering ---------- */
@@ -1712,6 +1809,10 @@
     syncReminderUI();
     updateKeptHint();
     rememberStartInstant();
+    /* SnapshotForm does not capture the chip buttons, so mirror the restored
+     * select/checkbox/date values back onto them. */
+    syncDurationChips();
+    syncFreqChips();
   }
 
   /* Re-enter the edit session a snapshot captured. Targets the same event by
@@ -1792,6 +1893,7 @@
         endTimeEl.value = toISOTime(next);
       }
       rememberStartInstant();
+      syncDurationChips();
       render();
       setStatus('Added "' + ev.options.title + '" to the calendar.');
     } catch (err) {
@@ -2465,6 +2567,8 @@
   syncAllDayUI();
   syncRecurUI();
   syncReminderUI();
+  syncDurationChips();
+  syncFreqChips();
   var restored = 0;
   var savedTotal = 0;
   var restoreFailed = false;
