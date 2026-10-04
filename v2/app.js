@@ -466,11 +466,30 @@
    * instant is cached, because a change event only carries the new value. */
   var prevStartInstant = null;
 
-  function instantFromDateInput(dateStr, timeStr) {
+  /* zonedTimeToDate always resolves an ambiguous (DST fall-back) wall time to
+   * its FIRST occurrence. That is the wrong read for the END of an event: a
+   * chip that adds N elapsed minutes can land inside the repeated hour, and
+   * re-reading that wall time an hour early silently shortens the event. When
+   * the instant an hour later still shows the same wall clock the label is
+   * repeated, so the LATER occurrence is the one that preserves the duration. */
+  function resolveWallLater(year, month, day, hour, minute, tz) {
+    var instant = zonedTimeToDate(year, month, day, hour, minute, tz);
+    var later = new Date(instant.getTime() + 60 * 60000);
+    var p = zoneParts(later, tz);
+    if (p.year === year && p.month === month && p.day === day &&
+        p.hour === hour && p.minute === minute) {
+      return later;
+    }
+    return instant;
+  }
+
+  function instantFromDateInput(dateStr, timeStr, preferLaterEnd) {
     if (!dateStr) return null;
     var d = parseDateInput(dateStr);
     var t = parseTimeInput(timeStr || '00:00'); /* missing time → midnight */
-    return zonedTimeToDate(d.year, d.month, d.day, t.hour, t.minute, timezoneEl.value || localTimeZone());
+    var tz = timezoneEl.value || localTimeZone();
+    if (preferLaterEnd) return resolveWallLater(d.year, d.month, d.day, t.hour, t.minute, tz);
+    return zonedTimeToDate(d.year, d.month, d.day, t.hour, t.minute, tz);
   }
 
   function rememberStartInstant() {
@@ -478,18 +497,18 @@
   }
 
   /* Project `minutes` after a start instant onto wall-clock parts in `tz`.
-   * Around a DST fall-back the projected wall clock can re-parse to the same
-   * (or an earlier) instant as the start, because the repeated hour is always
-   * read as its first occurrence; step the projection forward until what
-   * readForm() would parse is strictly after the start. */
+   * The end is elapsed-time arithmetic on the instant; the wall parts are then
+   * derived from it. resolveWallLater re-reads a repeated-hour label as its
+   * LATER occurrence, so the projection round-trips to the intended instant;
+   * the loop only backstops zones/engines that still read back early. */
   function projectedEndParts(startInstant, minutes, tz) {
-    var projected = startInstant.getTime() + minutes;
-    var p = zoneParts(new Date(projected), tz);
+    var target = startInstant.getTime() + minutes;
+    var p = zoneParts(new Date(target), tz);
     for (var i = 0; i < 6; i++) {
-      var reparsed = zonedTimeToDate(p.year, p.month, p.day, p.hour, p.minute, tz);
-      if (reparsed.getTime() > startInstant.getTime()) break;
-      projected += 30 * 60000;
-      p = zoneParts(new Date(projected), tz);
+      var reparsed = resolveWallLater(p.year, p.month, p.day, p.hour, p.minute, tz);
+      if (reparsed.getTime() >= target) break;
+      target += 30 * 60000;
+      p = zoneParts(new Date(target), tz);
     }
     return p;
   }
@@ -500,7 +519,7 @@
       syncAllDayUI();
     } else {
       var newStart = instantFromDateInput(startDateEl.value, startTimeEl.value);
-      var end = instantFromDateInput(endDateEl.value, endTimeEl.value);
+      var end = instantFromDateInput(endDateEl.value, endTimeEl.value, true);
       if (newStart && end && prevStartInstant && newStart.getTime() >= end.getTime()) {
         var duration = Math.max(end.getTime() - prevStartInstant.getTime(), 60 * 60000);
         var p = projectedEndParts(newStart, duration, timezoneEl.value || localTimeZone());
@@ -514,7 +533,7 @@
   startTimeEl.addEventListener('change', keepEndAfterStart);
   /* The cached start instant is zone-dependent; re-read it when the zone changes
    * so a later start change measures duration from the correct instant. */
-  timezoneEl.addEventListener('change', rememberStartInstant);
+  timezoneEl.addEventListener('change', function () { rememberStartInstant(); syncDurationChips(); });
   $('timezone-filter').addEventListener('input', renderTimeZones);
 
   /* ---------- duration chips ---------- */
@@ -531,9 +550,12 @@
   function syncDurationChips() {
     var allDay = $('all-day').checked;
     var minutes = null;
-    if (!allDay) {
+    /* A half-entered range has no duration to match, so no timed chip is
+     * active while a required start/end time (or date) is still empty. */
+    if (!allDay && startDateEl.value && startTimeEl.value &&
+        endDateEl.value && endTimeEl.value) {
       var start = instantFromDateInput(startDateEl.value, startTimeEl.value);
-      var end = instantFromDateInput(endDateEl.value, endTimeEl.value);
+      var end = instantFromDateInput(endDateEl.value, endTimeEl.value, true);
       if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
         minutes = Math.round((end.getTime() - start.getTime()) / 60000);
       }
@@ -551,6 +573,17 @@
   /* Set the end to start + `minutes` (the same zone/DST math the start-change
    * auto-shift uses) and drop out of all-day mode first when needed. */
   function applyDurationChip(minutes) {
+    /* A missing start cannot anchor the duration: point at the empty control
+     * instead of silently inventing midnight and lighting a chip. */
+    var allDay = $('all-day').checked;
+    var emptyEl = !startDateEl.value ? startDateEl
+      : (!allDay && !startTimeEl.value ? startTimeEl : null);
+    if (emptyEl) {
+      setFieldError(emptyEl.id, 'Pick a start date/time first.');
+      emptyEl.focus();
+      syncDurationChips();
+      return;
+    }
     var box = $('all-day');
     if (box.checked) {
       box.checked = false;
@@ -562,6 +595,9 @@
       var p = projectedEndParts(start, minutes * 60000, timezoneEl.value || localTimeZone());
       endDateEl.value = isoFromParts(p);
       endTimeEl.value = pad2(p.hour) + ':' + pad2(p.minute);
+      /* The rewritten end is valid again, so drop any stale inline error. */
+      clearFieldError('end-date');
+      clearFieldError('end-time');
       rememberStartInstant();
     }
     syncDurationChips();
@@ -805,7 +841,7 @@
       if (endDateEl.value && endTimeEl.value) {
         var ed = parseDateInput(endDateEl.value);
         var et = parseTimeInput(endTimeEl.value);
-        opts.end = zonedTimeToDate(ed.year, ed.month, ed.day, et.hour, et.minute, tz);
+        opts.end = resolveWallLater(ed.year, ed.month, ed.day, et.hour, et.minute, tz);
         if (opts.start && opts.end <= opts.start) {
           errors['end-date'] = 'The end date/time must be after the start.';
           errors['end-time'] = 'The end date/time must be after the start.';
