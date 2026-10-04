@@ -1893,6 +1893,36 @@
     el.classList.toggle('error', !!isError);
   }
 
+  /* Import notes: parser warnings are informational, not failures, so they live
+   * in their own collapsed box under the status line. The box is rebuilt on
+   * every import attempt and hidden when there is nothing to report. */
+  function renderImportNotes(warnings) {
+    var host = $('import-notes');
+    host.textContent = '';
+    if (!warnings || !warnings.length) { host.hidden = true; return; }
+
+    var details = document.createElement('details');
+    details.className = 'import-notes';
+    var summary = document.createElement('summary');
+    summary.textContent = warnings.length + ' import note' + (warnings.length === 1 ? '' : 's');
+    details.appendChild(summary);
+
+    var ul = document.createElement('ul');
+    warnings.slice(0, 20).forEach(function (warning) {
+      var li = document.createElement('li');
+      li.textContent = String(warning);
+      ul.appendChild(li);
+    });
+    if (warnings.length > 20) {
+      var more = document.createElement('li');
+      more.textContent = '+' + (warnings.length - 20) + ' more';
+      ul.appendChild(more);
+    }
+    details.appendChild(ul);
+    host.appendChild(details);
+    host.hidden = false;
+  }
+
   function looksLikeEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '')); }
   function looksLikeHttpUrl(s) { return /^https?:\/\//i.test(String(s || '')); }
 
@@ -1942,6 +1972,8 @@
   }
 
   function applyImport(text, sourceLabel) {
+    /* Every attempt replaces the previous notes, even one that fails early. */
+    renderImportNotes([]);
     if (!text || !text.trim()) { setImportStatus('Nothing to import — the text was empty.', true); return; }
     if (text.length > MAX_IMPORT_CHARS) { setImportStatus('That text is too large to import (over 2 MB).', true); return; }
 
@@ -1952,6 +1984,7 @@
       setImportStatus(err.message, true);
       return;
     }
+    renderImportNotes(result.warnings);
     if (!result.events.length) {
       setImportStatus('No events found in ' + (sourceLabel || 'that text') + '.', true);
       return;
@@ -1972,6 +2005,13 @@
 
     var added = 0;
     var hitCap = false;
+    /* Replace mode clears the list only once at least one imported event is
+     * about to land: a failed replace must leave the existing list intact, and
+     * the snapshot is the undo path back to both the list and the form. */
+    var replaceMode = $('import-mode-replace').checked;
+    var previousEvents = replaceMode ? cal.events.slice() : null;
+    var previousForm = replaceMode ? snapshotForm() : null;
+    if (replaceMode) cal.clear();
     result.events.forEach(function (ev) {
       if (cal.events.length >= MAX_EVENTS) { hitCap = true; return; }
       /* Skip an event only if ics.js rejects it outright; the count below
@@ -1982,12 +2022,20 @@
       } catch (err) { /* ignore and continue */ }
     });
 
+    if (replaceMode && added === 0) {
+      /* A replace that imported nothing is a failure: put the previous list
+       * and form back before the failure status below explains it. */
+      cal.events = previousEvents;
+      restoreForm(previousForm);
+      restoreEditState(previousForm);
+      render();
+    }
+
     if (added) {
-      /* Importing mutated the list, so it supersedes any pending undo. Dismiss
-       * here (not before the loop) so an import that adds nothing leaves a
-       * still-valid undo intact. */
+      /* Importing mutated the list, so it supersedes any pending undo. In
+       * replace mode the toast below becomes the undo, so leave it in place. */
       unlockStorage();
-      dismissUndoToast();
+      if (!replaceMode) dismissUndoToast();
       render();
       /* Collapse the panel so the (now populated) form is pulled into view. */
       $('import-box').open = false;
@@ -2000,10 +2048,18 @@
         populateForm(result.events[0]);
         $('title').focus();
       }
+      if (replaceMode) {
+        showUndoToast('Replaced ' + previousEvents.length + ' event(s) with ' + added + ' imported.', function () {
+          cal.events = previousEvents;
+          restoreForm(previousForm);
+          restoreEditState(previousForm);
+        }, $('import-text-btn'));
+      }
     }
 
     var msg = 'Imported ' + added + ' of ' + result.events.length +
       ' event' + (result.events.length === 1 ? '' : 's');
+    if (replaceMode) msg += ' (replaced ' + previousEvents.length + ')';
     if (sourceLabel) msg += ' from ' + sourceLabel;
     setImportStatus(msg + '.', added === 0);
     if (hitCap) setStatus('The list is full (' + MAX_EVENTS + ' events). Remove one first.', true);
