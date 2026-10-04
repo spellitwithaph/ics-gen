@@ -1425,7 +1425,10 @@
    * describeEvent shows. */
   function eventCardDateParts(ev) {
     if (ev.allDay || isDateParts(ev.start)) {
-      return { month: ev.start.month, day: ev.start.day };
+      /* start may be a Date revived from storage (all-day events), so
+       * normalize through the same helper googleCalendarUrl uses. */
+      var parts = datePartsOf(ev.start) || ev.start;
+      return { month: parts.month, day: parts.day };
     }
     var p = zoneParts(ev.start, ev.options.timezone || localTimeZone());
     return { month: p.month, day: p.day };
