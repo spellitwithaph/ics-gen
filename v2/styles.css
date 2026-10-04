@@ -60,6 +60,33 @@ main {
  * box cannot push the track past the viewport on narrow screens. */
 @media (max-width: 920px) { main { grid-template-columns: minmax(0, 1fr); } }
 
+/* ---------- Sticky event panel on wide screens ----------
+ * With the two panels side by side (above 920px) the event list keeps the
+ * top of the viewport as the form scrolls, so events and the toolbar stay
+ * reachable while editing. Long lists scroll inside the panel (max-height +
+ * overflow) instead of being clipped; the nested .ics preview keeps its own
+ * max-height/overflow and scrolls independently. */
+@media (min-width: 921px) {
+  main > .panel:nth-of-type(2) {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+  }
+  /* Keep the toolbar (calendar name, buttons, count) in view while a long
+   * event list scrolls inside the pinned panel. The extra top padding plus
+   * the matching negative margin extend its background across the panel's
+   * own 20px padding, so scrolling content never peeks above it. */
+  main > .panel:nth-of-type(2) > .toolbar {
+    position: sticky;
+    top: -20px;
+    z-index: 1;
+    margin-top: -20px;
+    padding: 20px 0 12px;
+    background: var(--panel);
+  }
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
