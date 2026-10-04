@@ -405,9 +405,15 @@
     $('field-count').hidden = off || end !== 'after';
     $('field-until').hidden = off || end !== 'on-date';
     $('field-byday').hidden = off || freq !== 'WEEKLY';
-    /* Down to just the select? Let it span a Status-select-sized column
-     * instead of the first third of the row (which clips "Does not repeat"). */
-    $('recur-row').classList.toggle('single', off);
+    /* Errors on controls that have just been hidden would sit invisible
+     * forever, so clear them alongside the hide (e.g. a count error when the
+     * visitor switches Repeat to Never). */
+    if ($('field-count').hidden) clearFieldError('recur-count');
+    if ($('field-until').hidden) clearFieldError('recur-until');
+    if ($('field-byday').hidden) {
+      var dayBoxes = bydayBoxes();
+      for (var i = 0; i < dayBoxes.length; i++) clearFieldError(dayBoxes[i].id);
+    }
   }
 
   /* The segmented control mirrors the (visually hidden) #recur-freq select,
@@ -740,6 +746,16 @@
     return null;
   }
 
+  /* The attendee whose NAME carries a control character (the same condition
+   * ics.js rejects), so the library error can land on the right row. */
+  function firstInvalidAttendeeName() {
+    var inputs = document.querySelectorAll('#attendee-list .att-name');
+    for (var i = 0; i < inputs.length; i++) {
+      if (/[\u0000-\u001F\u007F]/.test(inputs[i].value)) return inputs[i];
+    }
+    return null;
+  }
+
   /* Map a genuine library rejection (ics.js validateEventOptions/VEvent) onto
    * the control that caused it. Returns false when it is not identifiable, so
    * the caller can fall back to the status line. */
@@ -767,6 +783,16 @@
       focusFirstInvalidField();
       return true;
     }
+    if (/attendee name/.test(msg)) {
+      var nameInput = firstInvalidAttendeeName();
+      if (nameInput && nameInput.id) {
+        setFieldError(nameInput.id, 'Remove special characters from this attendee name.');
+        setStatus(generic, true);
+        revealControl(nameInput);
+        nameInput.focus();
+        return true;
+      }
+    }
     if (/attendee/.test(msg)) {
       var input = firstInvalidAttendeeEmail();
       if (input && input.id) {
@@ -785,6 +811,8 @@
   /* Whether any control behind "More options" holds a non-default value. */
   function advancedHasData() {
     if ($('status').value !== 'CONFIRMED') return true;
+    if ($('transp').value === 'TRANSPARENT') return true;
+    if (Number($('priority').value) >= 1) return true;
     if ($('url').value.trim()) return true;
     if ($('categories').value.trim()) return true;
     if ($('organizer-name').value.trim() || $('organizer-email').value.trim()) return true;
@@ -1196,7 +1224,7 @@
     row.className = 'attendee-row';
 
     var rowSeq = ++attendeeRowSeq;
-    row.appendChild(attendeeField('text', 'att-name', 'Name', 'Attendee name', a.name || ''));
+    row.appendChild(attendeeField('text', 'att-name', 'Name', 'Attendee name', a.name || '', 'att-name-' + rowSeq));
     row.appendChild(attendeeField('email', 'att-email', 'Email', 'Attendee email', a.email || '', 'att-email-' + rowSeq));
     row.appendChild(attendeeSelect('att-role', 'Attendee role', ATTENDEE_ROLES, a.role, 'REQ-PARTICIPANT'));
     row.appendChild(attendeeSelect('att-status', 'Attendee status', ATTENDEE_STATUSES, a.status, 'NEEDS-ACTION'));

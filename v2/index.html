@@ -86,7 +86,7 @@
     <code>.ics</code> file for Google Calendar, Outlook, or Apple Calendar.</p>
     <p class="trust-badge">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="10.5" width="16" height="10.5" rx="2.5"></rect><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"></path></svg>
-      <span>Private — runs entirely in your browser</span>
+      <span>Your events never leave your browser</span>
     </p>
   </header>
 
@@ -179,24 +179,25 @@
 
         <h3 class="form-section">Repeat &amp; Remind</h3>
 
-        <div class="field-row tri" id="recur-row">
-          <div class="field">
-            <label for="recur-freq" id="recur-freq-label">Repeat</label>
-            <div class="chip-group" id="recur-freq-chips" role="group" aria-labelledby="recur-freq-label">
-              <button type="button" class="chip" data-freq="NONE" aria-pressed="true">Never</button>
-              <button type="button" class="chip" data-freq="DAILY" aria-pressed="false">Daily</button>
-              <button type="button" class="chip" data-freq="WEEKLY" aria-pressed="false">Weekly</button>
-              <button type="button" class="chip" data-freq="MONTHLY" aria-pressed="false">Monthly</button>
-              <button type="button" class="chip" data-freq="YEARLY" aria-pressed="false">Yearly</button>
-            </div>
-            <select id="recur-freq" hidden>
-              <option value="NONE">Does not repeat</option>
-              <option value="DAILY">Daily</option>
-              <option value="WEEKLY">Weekly</option>
-              <option value="MONTHLY">Monthly</option>
-              <option value="YEARLY">Yearly</option>
-            </select>
+        <div class="field">
+          <label for="recur-freq" id="recur-freq-label">Repeat</label>
+          <div class="chip-group" id="recur-freq-chips" role="group" aria-labelledby="recur-freq-label">
+            <button type="button" class="chip" data-freq="NONE" aria-pressed="true">Never</button>
+            <button type="button" class="chip" data-freq="DAILY" aria-pressed="false">Daily</button>
+            <button type="button" class="chip" data-freq="WEEKLY" aria-pressed="false">Weekly</button>
+            <button type="button" class="chip" data-freq="MONTHLY" aria-pressed="false">Monthly</button>
+            <button type="button" class="chip" data-freq="YEARLY" aria-pressed="false">Yearly</button>
           </div>
+          <select id="recur-freq" hidden>
+            <option value="NONE">Does not repeat</option>
+            <option value="DAILY">Daily</option>
+            <option value="WEEKLY">Weekly</option>
+            <option value="MONTHLY">Monthly</option>
+            <option value="YEARLY">Yearly</option>
+          </select>
+        </div>
+
+        <div class="field-row tri" id="recur-row">
           <div class="field" id="field-interval">
             <label for="recur-interval">Every …</label>
             <input id="recur-interval" type="number" min="1" max="99" value="1">
@@ -258,6 +259,31 @@
             </div>
           </div>
 
+          <div class="field-row">
+            <div class="field">
+              <label for="transp">Show as</label>
+              <select id="transp">
+                <option value="OPAQUE" selected>Busy</option>
+                <option value="TRANSPARENT">Free</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="priority">Priority</label>
+              <select id="priority">
+                <option value="0" selected>None</option>
+                <option value="1">1 — Highest</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5 — Medium</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9 — Lowest</option>
+              </select>
+            </div>
+          </div>
+
           <div class="field">
             <label for="categories">Categories (comma separated)</label>
             <input id="categories" type="text" placeholder="Work, Meeting">
@@ -284,31 +310,6 @@
             <p class="hint">Attendees are attached to the invitation; your calendar app emails them when you send it.</p>
           </fieldset>
         </details>
-
-        <div class="field-row">
-          <div class="field">
-            <label for="transp">Show as</label>
-            <select id="transp">
-              <option value="OPAQUE" selected>Busy</option>
-              <option value="TRANSPARENT">Free</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="priority">Priority</label>
-            <select id="priority">
-              <option value="0" selected>None</option>
-              <option value="1">1 — Highest</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5 — Medium</option>
-              <option value="6">6</option>
-              <option value="7">7</option>
-              <option value="8">8</option>
-              <option value="9">9 — Lowest</option>
-            </select>
-          </div>
-        </div>
 
         <div class="form-actions">
           <button id="add-btn" type="submit" class="btn primary">Add event</button>

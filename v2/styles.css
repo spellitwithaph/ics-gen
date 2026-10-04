@@ -207,12 +207,6 @@ textarea { resize: vertical; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-row.tri { grid-template-columns: repeat(3, 1fr); }
-/* When a tri row is down to its select alone (repeat "Does not repeat"),
- * span a two-column-style width — the same as the
- * Status select — instead of the first third of the row, which clips the
- * "Does not repeat" label. */
-.field-row.tri.single { grid-template-columns: 1fr; }
-@media (min-width: 561px) { .field-row.tri.single { max-width: calc(50% - 6px); } }
 @media (max-width: 560px) {
   .field-row, .field-row.tri { grid-template-columns: 1fr; }
 }
