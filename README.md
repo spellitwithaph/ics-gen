@@ -57,8 +57,10 @@ v1 (each point is verifiable in `v2/app.js`, `v2/ics.js`, and
   end wall time falls in the repeated hour of a DST fall-back, the generator
   emits `DTEND` in UTC (`…Z`) so the duration stays unambiguous next to the
   `TZID`'d `DTSTART`.
-- **Appearance** — automatic dark mode (`prefers-color-scheme`), a preview
-  wrap toggle, and a copy button on the preview.
+- **Appearance** — automatic dark mode (`prefers-color-scheme`), the raw
+  `.ics` text behind a collapsed "View code" toggle (the wrap and copy
+  controls still live on that panel), and an invite-style card at the top of
+  the list panel summarizing the next event (the earliest one).
 
 The v2 libraries ship with the repo's zero-dependency Node test suite: 108
 passing tests covering the generator (option validation, escaping and folding,

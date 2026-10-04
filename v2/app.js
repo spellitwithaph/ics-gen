@@ -1705,8 +1705,9 @@
      * states how much it will export. Reset on every render (add, import,
      * clear, undo), so it can never lag the list. */
     $('download-btn').textContent = has ? 'Download .ics (' + cal.events.length + ')' : 'Download .ics';
-    /* The preview starts expanded (see the `open` attribute in index.html) and
-     * never auto-collapses; the visitor can still toggle it. */
+    /* The preview text updates on every render regardless of the <details>
+     * open state; index.html ships the box collapsed behind the "View code"
+     * summary and the visitor can expand it at will. */
 
     saveEvents();
   }
