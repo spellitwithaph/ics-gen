@@ -340,6 +340,18 @@ pre {
   max-height: 340px;
   white-space: pre;
 }
+#preview.wrapped { white-space: pre-wrap; }
+
+/* Preview controls sit in the summary, floated out of the way of the label
+ * text. The buttons swallow their clicks in app.js so the details does not
+ * toggle when they are used. */
+.preview-controls {
+  float: right;
+  display: flex;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.preview-controls .btn { padding: 4px 8px; }
 
 .status-msg { font-size: 13px; color: var(--muted); }
 .status-msg.error { color: var(--danger); }

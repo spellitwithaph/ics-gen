@@ -1882,6 +1882,51 @@
     }
   });
 
+  /* Preview controls live inside the <summary>, so a plain click would
+   * toggle the details open/closed — swallow the event before it reaches the
+   * summary's activation behavior. */
+
+  $('preview-wrap-btn').addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var wrapped = $('preview').classList.toggle('wrapped');
+    this.textContent = wrapped ? 'Wrap: on' : 'Wrap: off';
+    this.setAttribute('aria-pressed', wrapped ? 'true' : 'false');
+  });
+
+  var previewCopyFlashTimer = null;
+
+  $('preview-copy-btn').addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var btn = this;
+    var text = cal.toString();
+    function donePreviewCopy() {
+      setStatus('Copied to clipboard.');
+      btn.textContent = 'Copied!';
+      if (previewCopyFlashTimer) clearTimeout(previewCopyFlashTimer);
+      previewCopyFlashTimer = setTimeout(function () {
+        btn.textContent = 'Copy';
+        previewCopyFlashTimer = null;
+      }, 1600);
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); donePreviewCopy(); } catch (err) { setStatus('Copy failed — select the text manually.', true); }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(donePreviewCopy, fallback);
+    } else {
+      fallback();
+    }
+  });
+
   $('clear-btn').addEventListener('click', function () {
     if (!cal.events.length) {
       cal.clear();

@@ -318,7 +318,12 @@
       <label class="check vtimezone-toggle"><input id="vtimezone-toggle" type="checkbox"> Include VTIMEZONE blocks (best for strict/offline calendar clients)</label>
 
       <details id="preview-box" open>
-        <summary>Preview: generated .ics text</summary>
+        <summary>Preview: generated .ics text
+          <span class="preview-controls">
+            <button id="preview-wrap-btn" class="btn ghost" type="button" aria-pressed="false">Wrap: off</button>
+            <button id="preview-copy-btn" class="btn ghost" type="button">Copy</button>
+          </span>
+        </summary>
         <pre id="preview"></pre>
       </details>
     </section>
