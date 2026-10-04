@@ -375,3 +375,46 @@ footer a { color: var(--accent); }
 .panel.faq .faq-item:first-of-type { border-top: 0; }
 .panel.faq summary { padding: 10px 0; }
 .panel.faq .faq-item p { margin: 0 0 12px; color: var(--muted); font-size: 13.5px; }
+
+/* ---------- Dark mode (CSS-only, follows prefers-color-scheme) ----------
+ * All text pairings below were checked against WCAG AA (≥ 4.5:1):
+ * text/muted/accent/danger/code-text all clear AA on their backgrounds, and
+ * the primary/copy buttons switch to dark text because white on #7da2ff
+ * would fail AA for normal text. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --surface: #1c2333;
+    --field: #131926;
+    --text: #e3e9f4;
+    --muted: #9aa8c0;
+    --accent: #7da2ff;
+    --accent-strong: #9db9ff;
+    --accent-soft: #21335f;
+    --border: #2a3347;
+    --border-strong: #3a4661;
+    --danger: #ff9285;
+    --code-bg: #0a0f1a;
+    --code-text: #cdd8ea;
+  }
+
+  /* The chevron is an inline SVG data URI, so its stroke cannot follow a
+   * variable — re-declare the background in the dark muted tone. */
+  .field select {
+    background: var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%239aa8c0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  }
+
+  /* The light-mode ring alpha is nearly invisible on the dark fields. */
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus {
+    box-shadow: 0 0 0 3px rgba(125, 162, 255, 0.28);
+  }
+
+  /* White on #7da2ff fails AA — use the page background as the text color. */
+  .btn.primary,
+  .btn.copied {
+    color: #0f1420;
+  }
+}
