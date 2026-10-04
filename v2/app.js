@@ -1216,6 +1216,69 @@
     return bits.join(' · ');
   }
 
+  /* ---------- Google Calendar link ---------- */
+
+  function gcalTimestamp(date) {
+    return date.getUTCFullYear() + pad2(date.getUTCMonth() + 1) + pad2(date.getUTCDate()) +
+      'T' + pad2(date.getUTCHours()) + pad2(date.getUTCMinutes()) + pad2(date.getUTCSeconds()) + 'Z';
+  }
+
+  function gcalDate(parts) {
+    return parts.year + pad2(parts.month) + pad2(parts.day);
+  }
+
+  function datePartsOf(v) {
+    if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
+    if (v instanceof Date) {
+      return { year: v.getUTCFullYear(), month: v.getUTCMonth() + 1, day: v.getUTCDate() };
+    }
+    return null;
+  }
+
+  function nextDateParts(parts) {
+    var d = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + 1));
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+  }
+
+  /* Build the Google Calendar "add event" template URL for one list item.
+   * Google wants UTC instants for timed events (with ctz naming the display
+   * zone) and an exclusive end date for all-day events. Every value is
+   * percent-encoded, and the caller only ever sets href/textContent. */
+  function googleCalendarUrl(ev) {
+    var o = ev.options;
+    var params = [['action', 'TEMPLATE'], ['text', String(o.title || '')]];
+
+    var dates;
+    if (ev.allDay) {
+      var startParts = datePartsOf(ev.start);
+      var endParts = datePartsOf(ev.end) || (startParts ? nextDateParts(startParts) : null);
+      dates = (startParts ? gcalDate(startParts) : '') + '/' + (endParts ? gcalDate(endParts) : '');
+    } else {
+      var start = ev.start;
+      var end = ev.end instanceof Date ? ev.end : null;
+      if (!end) {
+        var minutes = Number(o.durationMinutes) > 0 ? Number(o.durationMinutes) : 0;
+        end = new Date(start.getTime() + minutes * 60000);
+      }
+      dates = gcalTimestamp(start) + '/' + gcalTimestamp(end);
+    }
+    params.push(['dates', dates]);
+
+    var details = '';
+    if (o.description && o.url) details = o.description + '\n' + o.url;
+    else if (o.description) details = o.description;
+    else if (o.url) details = o.url;
+    if (details) params.push(['details', details]);
+
+    if (o.location) params.push(['location', String(o.location)]);
+    if (o.timezone && o.timezone !== 'UTC') params.push(['ctz', String(o.timezone)]);
+    if (o.rrule) params.push(['recur', 'RRULE:' + String(o.rrule).replace(/^RRULE:/i, '')]);
+
+    return 'https://calendar.google.com/calendar/render?' + params.map(function (p) {
+      return p[0] + '=' + encodeURIComponent(p[1]);
+    }).join('&');
+  }
+
   /* Sort key for the list view: an all-day event sorts by its calendar day
    * (UTC midnight), a timed event by its instant. */
   function eventSortTime(ev) {
@@ -1291,6 +1354,15 @@
           setStatus('Duplicated "' + ev.options.title + '".');
         });
 
+        var gcal = document.createElement('a');
+        gcal.className = 'btn ghost gcal-link';
+        gcal.href = googleCalendarUrl(ev);
+        gcal.target = '_blank';
+        gcal.rel = 'noopener noreferrer';
+        gcal.textContent = 'Google Calendar';
+        gcal.title = 'Open in Google Calendar';
+        gcal.setAttribute('aria-label', 'Open ' + ev.options.title + ' in Google Calendar');
+
         var del = document.createElement('button');
         del.type = 'button';
         del.className = 'btn ghost';
@@ -1315,6 +1387,7 @@
         li.appendChild(info);
         li.appendChild(edit);
         li.appendChild(dup);
+        li.appendChild(gcal);
         li.appendChild(del);
         list.appendChild(li);
       });

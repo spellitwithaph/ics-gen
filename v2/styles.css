@@ -297,6 +297,7 @@ textarea { resize: vertical; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
@@ -313,6 +314,12 @@ textarea { resize: vertical; }
   overflow-wrap: anywhere;
 }
 #event-list .btn { flex: none; padding: 6px 10px; font-size: 13px; }
+#event-list .gcal-link {
+  text-decoration: none;
+  white-space: nowrap;
+  color: var(--accent);
+}
+#event-list .gcal-link:hover { color: var(--accent-strong); border-color: var(--border-strong); }
 #event-list .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
 
 details { margin-top: 6px; }
