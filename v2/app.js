@@ -1862,9 +1862,11 @@
     }, 1600);
   }
 
-  $('copy-btn').addEventListener('click', function () {
-    var text = cal.toString();
-    function done() { setStatus('Copied to clipboard.'); flashCopied(); }
+  /* Shared clipboard path for both copy buttons: calls back with true on
+   * success and false when the copy failed (clipboard rejection, or the
+   * execCommand fallback returning false or throwing), so callers never
+   * report success for a copy that did not happen. */
+  function copyText(text, onDone) {
     function fallback() {
       var ta = document.createElement('textarea');
       ta.value = text;
@@ -1872,14 +1874,23 @@
       ta.style.opacity = '0';
       document.body.appendChild(ta);
       ta.select();
-      try { document.execCommand('copy'); done(); } catch (e) { setStatus('Copy failed — select the text manually.', true); }
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
       document.body.removeChild(ta);
+      onDone(!!ok);
     }
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(done, fallback);
+      navigator.clipboard.writeText(text).then(function () { onDone(true); }, fallback);
     } else {
       fallback();
     }
+  }
+
+  $('copy-btn').addEventListener('click', function () {
+    copyText(cal.toString(), function (ok) {
+      if (ok) { setStatus('Copied to clipboard.'); flashCopied(); }
+      else { setStatus('Copy failed — select the text manually.', true); }
+    });
   });
 
   /* Preview controls live inside the <summary>, so a plain click would
@@ -1900,8 +1911,8 @@
     e.preventDefault();
     e.stopPropagation();
     var btn = this;
-    var text = cal.toString();
-    function donePreviewCopy() {
+    copyText(cal.toString(), function (ok) {
+      if (!ok) { setStatus('Copy failed — select the text manually.', true); return; }
       setStatus('Copied to clipboard.');
       btn.textContent = 'Copied!';
       if (previewCopyFlashTimer) clearTimeout(previewCopyFlashTimer);
@@ -1909,22 +1920,7 @@
         btn.textContent = 'Copy';
         previewCopyFlashTimer = null;
       }, 1600);
-    }
-    function fallback() {
-      var ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); donePreviewCopy(); } catch (err) { setStatus('Copy failed — select the text manually.', true); }
-      document.body.removeChild(ta);
-    }
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(donePreviewCopy, fallback);
-    } else {
-      fallback();
-    }
+    });
   });
 
   $('clear-btn').addEventListener('click', function () {
