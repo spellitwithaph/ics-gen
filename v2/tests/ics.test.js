@@ -33,6 +33,64 @@ function calendarWith(options) {
   return calendar;
 }
 
+/* ---------- availability & priority ---------- */
+
+function fieldEvent(fields) {
+  return makeEvent(Object.assign({ title: 'Fields', start: new Date('2026-01-05T10:00:00Z') }, fields));
+}
+
+test('explicit OPAQUE and TRANSPARENT emit TRANSP', function () {
+  ['OPAQUE', 'TRANSPARENT'].forEach(function (transp) {
+    assert.includes(fieldEvent({ transp: transp }).toString(), 'TRANSP:' + transp);
+  });
+});
+
+test('omitted transp emits no TRANSP line', function () {
+  assert.ok(fieldEvent({}).toString().indexOf('TRANSP:') === -1);
+});
+
+test('invalid transp values are rejected eagerly', function () {
+  ['BUSY', 'transparent', '', null, 'OPAQUE\r\nPRIORITY:1'].forEach(function (transp) {
+    assert.throws(function () { fieldEvent({ transp: transp }); }, /event "transp"/);
+  });
+});
+
+test('priority 1 and 9 emit PRIORITY', function () {
+  [1, 9].forEach(function (priority) {
+    assert.includes(fieldEvent({ priority: priority }).toString(), 'PRIORITY:' + priority);
+  });
+});
+
+test('priority zero and undefined emit no PRIORITY line', function () {
+  [0, undefined].forEach(function (priority) {
+    assert.ok(fieldEvent({ priority: priority }).toString().indexOf('PRIORITY:') === -1);
+  });
+});
+
+test('invalid priorities are rejected eagerly', function () {
+  [10, -1, 1.5, NaN, Infinity, '1', null].forEach(function (priority) {
+    assert.throws(function () { fieldEvent({ priority: priority }); }, /event "priority"/);
+  });
+});
+
+test('mutated transp and priority are revalidated during serialization', function () {
+  var ev = fieldEvent({ transp: 'OPAQUE', priority: 1 });
+  ev.options.transp = 'BUSY';
+  assert.throws(function () { ev.toString(); }, /event "transp"/);
+  ev.options.transp = 'TRANSPARENT';
+  ev.options.priority = 10;
+  assert.throws(function () { ev.toString(); }, /event "priority"/);
+});
+
+test('calendar name can be changed or omitted through its options', function () {
+  var cal = new ICS.Calendar({ name: 'My Events' });
+  assert.includes(cal.toString(), 'X-WR-CALNAME:My Events');
+  cal.options.name = 'Team, planning';
+  assert.includes(cal.toString(), 'X-WR-CALNAME:Team\\, planning');
+  cal.options.name = '';
+  assert.ok(cal.toString().indexOf('X-WR-CALNAME:') === -1);
+});
+
 /* ---------- escaping ---------- */
 
 test('escapeText escapes backslashes', function () {
@@ -558,6 +616,38 @@ test('updateEvent validates options exactly like addEvent', function () {
   }, /absolute http\(s\) URL/);
   assert.eq(cal.events.length, 1, 'a failed update must not change the calendar');
   assert.eq(cal.events[0].options.title, 'A');
+});
+
+test('updateEvent accepts and re-validates transp and priority like addEvent', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'A',
+    start: new Date('2026-01-05T10:00:00Z'),
+    durationMinutes: 30,
+    transp: 'OPAQUE',
+    priority: 5
+  });
+  var updated = cal.updateEvent(0, {
+    title: 'A',
+    start: new Date('2026-01-05T10:00:00Z'),
+    durationMinutes: 30,
+    transp: 'TRANSPARENT',
+    priority: 9
+  });
+  assert.eq(updated.options.transp, 'TRANSPARENT');
+  assert.eq(updated.options.priority, 9);
+  var text = unfold(cal.toString());
+  assert.includes(text, 'TRANSP:TRANSPARENT');
+  assert.includes(text, 'PRIORITY:9');
+
+  assert.throws(function () {
+    cal.updateEvent(0, { title: 'A', start: new Date('2026-01-05T10:00:00Z'), transp: 'BUSY' });
+  }, /event "transp"/);
+  assert.throws(function () {
+    cal.updateEvent(0, { title: 'A', start: new Date('2026-01-05T10:00:00Z'), priority: 10 });
+  }, /event "priority"/);
+  assert.eq(cal.events[0].options.transp, 'TRANSPARENT', 'a failed update must not change the event');
+  assert.eq(cal.events[0].options.priority, 9);
 });
 
 test('updateEvent replaces alarms and attendees arrays instead of merging them', function () {

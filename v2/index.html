@@ -202,27 +202,12 @@
           </div>
         </div>
 
-        <div class="field-row tri" id="reminder-row">
-          <div class="field">
-            <label for="reminder-toggle">Reminder</label>
-            <select id="reminder-toggle">
-              <option value="off" selected>No reminder</option>
-              <option value="on">Remind me</option>
-            </select>
-          </div>
-          <div class="field" id="field-reminder-value">
-            <label for="reminder-value">Time before</label>
-            <input id="reminder-value" type="number" min="1" max="999" step="1" value="10">
-          </div>
-          <div class="field" id="field-reminder-unit">
-            <label for="reminder-unit">Unit</label>
-            <select id="reminder-unit">
-              <option value="minutes" selected>Minutes</option>
-              <option value="hours">Hours</option>
-              <option value="days">Days</option>
-            </select>
-          </div>
-        </div>
+        <fieldset class="contact-group">
+          <legend>Reminders</legend>
+          <div id="reminder-rows"></div>
+          <button id="add-reminder-btn" class="btn ghost" type="button">Add reminder</button>
+          <p class="hint">Up to five reminders, each minutes, hours, or days before the event.</p>
+        </fieldset>
 
         <p class="hint" id="edit-kept-hint" hidden></p>
 
@@ -238,6 +223,31 @@
           <div class="field">
             <label for="url">Web link</label>
             <input id="url" type="url" placeholder="https://example.com/agenda">
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="transp">Show as</label>
+            <select id="transp">
+              <option value="OPAQUE" selected>Busy</option>
+              <option value="TRANSPARENT">Free</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="priority">Priority</label>
+            <select id="priority">
+              <option value="0" selected>None</option>
+              <option value="1">1 — Highest</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5 — Medium</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9 — Lowest</option>
+            </select>
           </div>
         </div>
 
@@ -265,7 +275,6 @@
         <div class="form-actions">
           <button id="add-btn" type="submit" class="btn primary">Add event</button>
           <button id="cancel-edit-btn" class="btn ghost" type="button" hidden>Cancel</button>
-          <button id="download-btn" class="btn" type="button" disabled>Download .ics</button>
           <span id="status-msg" class="status-msg" role="status" tabindex="-1"></span>
         </div>
       </form>
@@ -273,10 +282,21 @@
 
     <section class="panel" aria-labelledby="list-heading">
       <div class="toolbar">
+        <div class="field calendar-name-field">
+          <label for="calendar-name">Calendar name</label>
+          <input id="calendar-name" type="text" placeholder="My Events" value="My Events" maxlength="60">
+        </div>
         <div class="toolbar-buttons">
           <button id="sample-btn" class="btn" type="button">Load sample events</button>
           <button id="clear-btn" class="btn ghost" type="button">Clear all</button>
           <button id="copy-btn" class="btn ghost" type="button" disabled>Copy .ics</button>
+        </div>
+        <div class="download-controls">
+          <div class="field filename-field">
+            <label for="download-filename">File name</label>
+            <input id="download-filename" type="text" placeholder="my-events" maxlength="60">
+          </div>
+          <button id="download-btn" class="btn" type="button" disabled>Download .ics</button>
         </div>
         <h2 id="list-heading"><span id="event-count" aria-live="polite">0 events</span></h2>
       </div>

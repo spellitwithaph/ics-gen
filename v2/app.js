@@ -410,11 +410,18 @@
     $('recur-row').classList.toggle('single', off);
   }
 
+  function reminderRows() {
+    return document.querySelectorAll('#reminder-rows .reminder-row');
+  }
+
   function syncReminderUI() {
-    var off = $('reminder-toggle').value === 'off';
-    $('field-reminder-value').hidden = off;
-    $('field-reminder-unit').hidden = off;
-    $('reminder-row').classList.toggle('single', off);
+    var rows = reminderRows();
+    $('add-reminder-btn').disabled = rows.length >= 5;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].querySelector('.reminder-value').setAttribute('aria-label', 'Reminder ' + (i + 1) + ' value');
+      rows[i].querySelector('.reminder-unit').setAttribute('aria-label', 'Reminder ' + (i + 1) + ' unit');
+      rows[i].querySelector('.reminder-remove').setAttribute('aria-label', 'Remove reminder ' + (i + 1));
+    }
   }
 
   $('all-day').addEventListener('change', syncAllDayUI);
@@ -425,11 +432,14 @@
   });
   $('recur-end').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
   $('recur-count').addEventListener('change', updateKeptHint);
-  $('reminder-toggle').addEventListener('change', function () { syncReminderUI(); updateKeptHint(); });
-  /* The "kept as-is" hint names only what the current controls will actually
-   * preserve, so refresh it whenever one of them changes. */
-  $('reminder-value').addEventListener('change', updateKeptHint);
-  $('reminder-unit').addEventListener('change', updateKeptHint);
+  /* Delegated so every dynamically added reminder row refreshes the hint. */
+  $('reminder-rows').addEventListener('input', updateKeptHint);
+  $('reminder-rows').addEventListener('change', updateKeptHint);
+  $('add-reminder-btn').addEventListener('click', function () {
+    var row = addReminderRow();
+    updateKeptHint();
+    if (row) row.querySelector('.reminder-value').focus();
+  });
 
   /* Keep the end after the start when the start moves past it: shift the end by
    * the duration entered before the change (min 1 hour). The previous start
@@ -688,6 +698,9 @@
     var cats = $('categories').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
     if (cats.length) opts.categories = cats;
     opts.status = $('status').value;
+    if ($('transp').value === 'TRANSPARENT') opts.transp = 'TRANSPARENT';
+    var priority = Number($('priority').value);
+    if (priority >= 1) opts.priority = priority;
 
     var freq = $('recur-freq').value;
     if (freq !== 'NONE') {
@@ -702,8 +715,11 @@
       var end = $('recur-end').value;
       if (end === 'after') {
         var countEl = $('recur-count');
-        var count = Number.isFinite(countEl.valueAsNumber) ? countEl.valueAsNumber : parseFloat(countEl.value);
-        if (!Number.isFinite(count) || Math.floor(count) !== count || count < 1 || count > 999) {
+        /* Same raw-spelling rule as reminder rows: '1e2' must not slip through
+         * as COUNT=100. */
+        var rawCount = String(countEl.value).trim();
+        var count = Number(rawCount);
+        if (!/^[0-9]{1,3}$/.test(rawCount) || !Number.isInteger(count) || count < 1 || count > 999) {
           errors['recur-count'] = 'Pick a whole number of occurrences (1-999).';
         } else {
           parts.push('COUNT=' + count);
@@ -721,19 +737,21 @@
       opts.rrule = parts.join(';');
     }
 
-    var on = $('reminder-toggle').value === 'on';
-    if (on) {
-      var n = parseInt($('reminder-value').value, 10);
-      if (!n || n < 1) {
-        errors['reminder-value'] = 'Pick how long before the event to remind you (1 or more).';
+    var reminders = reminderRows();
+    var alarms = [];
+    for (var ri = 0; ri < reminders.length; ri++) {
+      var valueInput = reminders[ri].querySelector('.reminder-value');
+      /* Validate the raw spelling, not valueAsNumber: '1e2' parses to 100 but
+       * is not a whole-number literal the form should accept. */
+      var rawValue = String(valueInput.value).trim();
+      var n = Number(rawValue);
+      if (!/^[0-9]{1,3}$/.test(rawValue) || !Number.isInteger(n) || n < 1 || n > 999) {
+        errors[valueInput.id] = 'Reminder ' + (ri + 1) + ': pick a whole number from 1 to 999.';
       } else {
-        var unit = $('reminder-unit').value; /* minutes | hours | days */
-        var dur = unit === 'days' ? 'P' + n + 'D'
-          : unit === 'hours' ? 'PT' + n + 'H'
-          : 'PT' + n + 'M';
-        opts.alarms = [{ trigger: '-' + dur }]; /* e.g. -PT10M, -PT2H, -P1D */
+        alarms.push({ trigger: triggerFromParts({ value: n, unit: reminders[ri].querySelector('.reminder-unit').value }) });
       }
     }
+    if (alarms.length) opts.alarms = alarms;
 
     var orgName = $('organizer-name').value.trim();
     var orgEmail = $('organizer-email').value.trim();
@@ -898,23 +916,65 @@
    * strings all fail. Numeric minute triggers (-10) equal the '-PT10M' the
    * form writes, so they count as representable when integral. */
   function triggerRoundTrips(trigger, parts) {
-    if (!parts || !(parts.value >= 1)) return false;
+    if (!parts || !Number.isInteger(parts.value) || parts.value < 1 || parts.value > 999) return false;
     if (typeof trigger === 'number') return Number.isInteger(trigger) && trigger < 0;
-    return String(trigger == null ? '' : trigger).trim() === triggerFromParts(parts);
+    return String(trigger == null ? '' : trigger) === triggerFromParts(parts);
   }
 
-  /* The single alarm the reminder control can represent, as { value, unit },
-   * or null when the array is not fully representable (more than one alarm, a
-   * non-DISPLAY action, a description, or a trigger the control cannot show
-   * back exactly). */
+  /* Up to five DISPLAY alarms without descriptions, returned as row parts.
+   * Every trigger must round-trip exactly; otherwise the entire array is kept
+   * as-is rather than loading a partial, potentially destructive edit. */
   function simpleAlarm(alarms) {
-    if (!Array.isArray(alarms) || alarms.length !== 1) return null;
-    var a = alarms[0];
-    if (!a) return null;
-    var action = a.action ? String(a.action).toUpperCase() : 'DISPLAY';
-    if (action !== 'DISPLAY' || a.description) return null;
-    var parts = parseTrigger(a.trigger);
-    return triggerRoundTrips(a.trigger, parts) ? parts : null;
+    if (!Array.isArray(alarms) || alarms.length > 5) return null;
+    var rows = [];
+    for (var i = 0; i < alarms.length; i++) {
+      var a = alarms[i];
+      if (!a) return null;
+      var action = a.action ? String(a.action).toUpperCase() : 'DISPLAY';
+      if (action !== 'DISPLAY' || a.description != null) return null;
+      var parts = parseTrigger(a.trigger);
+      if (!triggerRoundTrips(a.trigger, parts)) return null;
+      rows.push(parts);
+    }
+    return rows;
+  }
+
+  var reminderRowSeq = 0;
+
+  function addReminderRow(parts) {
+    if (reminderRows().length >= 5) return null;
+    parts = parts || { value: 10, unit: 'minutes' };
+    var row = document.createElement('div');
+    row.className = 'reminder-row';
+    var valueField = attendeeField('number', 'reminder-value', '', 'Reminder value', parts.value, 'reminder-value-' + (++reminderRowSeq));
+    var input = valueField.querySelector('input');
+    input.min = '1';
+    input.max = '999';
+    input.step = '1';
+    row.appendChild(valueField);
+    row.appendChild(attendeeSelect('reminder-unit', 'Reminder unit', [
+      ['minutes', 'Minutes'], ['hours', 'Hours'], ['days', 'Days']
+    ], parts.unit, 'minutes'));
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn ghost reminder-remove';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', function () {
+      row.parentNode.removeChild(row);
+      syncReminderUI();
+      updateKeptHint();
+      $('add-reminder-btn').focus();
+    });
+    row.appendChild(remove);
+    $('reminder-rows').appendChild(row);
+    syncReminderUI();
+    return row;
+  }
+
+  function setReminders(rows) {
+    $('reminder-rows').textContent = '';
+    (rows || []).forEach(addReminderRow);
+    syncReminderUI();
   }
 
   var ATTENDEE_ROLES = [
@@ -1029,6 +1089,8 @@
     $('url').value = ev.url || '';
     $('categories').value = (ev.categories || []).join(', ');
     $('status').value = /^(CONFIRMED|TENTATIVE|CANCELLED)$/.test(ev.status || '') ? ev.status : 'CONFIRMED';
+    $('transp').value = ev.transp === 'TRANSPARENT' ? 'TRANSPARENT' : 'OPAQUE';
+    $('priority').value = ev.priority >= 1 && ev.priority <= 9 ? String(ev.priority) : '0';
 
     var allDay = !!ev.allDay;
     $('all-day').checked = allDay;
@@ -1070,13 +1132,7 @@
     setByday(rule && rule.byday);
     syncRecurUI();
 
-    var alarm = simpleAlarm(ev.alarms);
-    $('reminder-toggle').value = alarm ? 'on' : 'off';
-    if (alarm) {
-      $('reminder-value').value = alarm.value;
-      $('reminder-unit').value = alarm.unit;
-    }
-    syncReminderUI();
+    setReminders(simpleAlarm(ev.alarms));
 
     setOrganizer(ev.organizer);
     setAttendees(ev.attendees);
@@ -1150,6 +1206,8 @@
         return 'remind ' + humanizeDuration(a.trigger) + ' before';
       }).join(' & '));
     }
+    if (o.transp === 'TRANSPARENT') bits.push('Free');
+    if (o.priority >= 1) bits.push('priority ' + o.priority);
     if (o.location) bits.push(o.location);
     if (o.organizer && o.organizer.email) bits.push('by ' + (o.organizer.name || o.organizer.email));
     if (Array.isArray(o.attendees) && o.attendees.length) {
@@ -1227,6 +1285,7 @@
           /* This mutation supersedes any pending undo: drop it without
            * restoring so a later Undo cannot wipe the duplicate. */
           cal.addEvent(cloneEventOptions(ev.options));
+          unlockStorage();
           dismissUndoToast();
           render();
           setStatus('Duplicated "' + ev.options.title + '".');
@@ -1240,6 +1299,7 @@
           var removed = cal.events[i];
           var removedIndex = i;
           cal.removeEvent(removedIndex);
+          unlockStorage();
           render();
           showUndoToast('Removed "' + removed.options.title + '".', function () {
             /* Reinsertion grows the list, so respect the same cap every other
@@ -1335,7 +1395,7 @@
     if (editingEvent && editingKept.rrule && $('recur-freq').value === 'NONE') {
       parts.push('advanced recurrence');
     }
-    if (editingEvent && editingKept.alarms && $('reminder-toggle').value === 'off') {
+    if (editingEvent && editingKept.alarms && reminderRows().length === 0) {
       parts.push('extra reminders');
     }
     return parts;
@@ -1483,6 +1543,7 @@
     }
     /* A refused undo (e.g. the cap would be exceeded) reports its own status. */
     if (result === false) return;
+    unlockStorage();
     render(); /* also persists the restored list */
     setStatus('Undone.');
     if (focusInside) refocusAfterUndo(trigger);
@@ -1508,14 +1569,14 @@
     }
   });
 
-  /* Snapshot every control in the event form (plus attendee rows) so loading
+  /* Snapshot every control in the event form (plus attendee/reminder rows) so loading
    * samples can be undone back to the visitor's work. */
   function snapshotForm() {
     var values = [];
     var fields = $('event-form').querySelectorAll('input, select, textarea');
     for (var i = 0; i < fields.length; i++) {
       var el = fields[i];
-      if (!el.id || el.id === 'timezone-filter' || (el.closest && el.closest('#attendee-list'))) continue;
+      if (!el.id || el.id === 'timezone-filter' || (el.closest && el.closest('#attendee-list, #reminder-rows'))) continue;
       values.push({
         id: el.id,
         checked: el.type === 'checkbox' ? el.checked : null,
@@ -1537,6 +1598,9 @@
     return {
       values: values,
       attendees: attendees,
+      reminders: Array.prototype.map.call(reminderRows(), function (row) {
+        return { value: row.querySelector('.reminder-value').value, unit: row.querySelector('.reminder-unit').value };
+      }),
       /* Edit context travels with the draft so a samples undo can put the
        * visitor back into the same Update session, not a silent Add. */
       editingEvent: editingEvent,
@@ -1553,6 +1617,7 @@
     var box = $('attendee-list');
     box.textContent = '';
     snap.attendees.forEach(addAttendeeRow);
+    setReminders(snap.reminders);
     snap.values.forEach(function (rec) {
       var el = $(rec.id);
       if (!el) return;
@@ -1608,6 +1673,7 @@
             return;
           }
           updated = cal.addEvent(opts);
+          unlockStorage();
           dismissUndoToast();
           exitEditMode();
           render();
@@ -1618,10 +1684,11 @@
           if (opts.rrule == null && editingKept.rrule && $('recur-freq').value === 'NONE') {
             opts.rrule = editingKept.rrule;
           }
-          if (opts.alarms == null && editingKept.alarms && $('reminder-toggle').value === 'off') {
+          if (opts.alarms == null && editingKept.alarms && reminderRows().length === 0) {
             opts.alarms = editingKept.alarms.map(copyPlain);
           }
           updated = cal.updateEvent(index, opts);
+          unlockStorage();
           dismissUndoToast();
           exitEditMode();
           render();
@@ -1637,6 +1704,7 @@
       }
 
       var ev = cal.addEvent(opts);
+      unlockStorage();
       dismissUndoToast();
       /* quick-entry flow: roll the form forward to the next slot */
       if (!$('all-day').checked && endDateEl.value && endTimeEl.value) {
@@ -1657,8 +1725,40 @@
     }
   });
 
+  /* Calendar.toString reads options.name each time; no library setter needed.
+   * These toolbar inputs are deliberately outside the event form snapshots.
+   * The name is trimmed so a whitespace-only value emits no X-WR-CALNAME. */
+  function syncCalendarName() {
+    cal.options.name = $('calendar-name').value.trim();
+  }
+
+  /* Every keystroke would rebuild the list, preview and (when unlocked) the
+   * save, so the input handler is debounced; change/blur flushes immediately. */
+  var calendarNameTimer = null;
+  function commitCalendarName() {
+    syncCalendarName();
+    render();
+  }
+  $('calendar-name').addEventListener('input', function () {
+    if (calendarNameTimer) clearTimeout(calendarNameTimer);
+    calendarNameTimer = setTimeout(function () {
+      calendarNameTimer = null;
+      commitCalendarName();
+    }, 300);
+  });
+  $('calendar-name').addEventListener('change', function () {
+    if (calendarNameTimer) { clearTimeout(calendarNameTimer); calendarNameTimer = null; }
+    commitCalendarName();
+  });
+  $('download-filename').addEventListener('input', saveEvents);
+  $('download-filename').addEventListener('change', saveEvents);
+
   $('download-btn').addEventListener('click', function () {
-    IcsGenerator.download(slugify(cal.events[0].options.title) + '.ics', cal.toString());
+    /* Strip a typed .ics suffix before slugifying so 'invite.ics' does not
+     * become 'invite-ics.ics'. */
+    var raw = $('download-filename').value.trim();
+    var filename = raw ? raw.replace(/\.ics$/i, '') : cal.events[0].options.title;
+    IcsGenerator.download(slugify(filename) + '.ics', cal.toString());
     setStatus('Download started.');
   });
 
@@ -1701,12 +1801,14 @@
   $('clear-btn').addEventListener('click', function () {
     if (!cal.events.length) {
       cal.clear();
+      unlockStorage();
       render();
       setStatus('Cleared.');
       return;
     }
     var snapshot = cal.events.slice();
     cal.clear();
+    unlockStorage();
     render();
     setStatus('Cleared.');
     showUndoToast(
@@ -1725,6 +1827,7 @@
     exitEditMode();
 
     cal.clear();
+    unlockStorage();
 
     /* 1. recurring standup — remind 10 min before (number trigger) */
     cal.addEvent({
@@ -1813,6 +1916,8 @@
     if (ev.location) o.location = ev.location;
     if (ev.url && looksLikeHttpUrl(ev.url)) o.url = ev.url;
     if (/^(CONFIRMED|TENTATIVE|CANCELLED)$/.test(ev.status || '')) o.status = ev.status;
+    if (ev.transp === 'OPAQUE' || ev.transp === 'TRANSPARENT') o.transp = ev.transp;
+    if (ev.priority >= 1 && ev.priority <= 9) o.priority = ev.priority;
     if (ev.categories && ev.categories.length) o.categories = ev.categories;
     if (ev.rrule) o.rrule = ev.rrule;
     if (ev.alarms && ev.alarms.length) o.alarms = ev.alarms;
@@ -1852,6 +1957,19 @@
       return;
     }
 
+    /* An imported calendar name fills the input only while it still shows the
+     * built-in default; blank or whitespace names are intentional and stay
+     * untouched, so a customized name is never overwritten either. */
+    var importedName = result.calendar && typeof result.calendar.name === 'string'
+      ? result.calendar.name.trim() : '';
+    if (importedName) {
+      var currentName = $('calendar-name').value.trim();
+      if (currentName === 'My Events') {
+        $('calendar-name').value = importedName.slice(0, 60);
+        syncCalendarName();
+      }
+    }
+
     var added = 0;
     var hitCap = false;
     result.events.forEach(function (ev) {
@@ -1868,6 +1986,7 @@
       /* Importing mutated the list, so it supersedes any pending undo. Dismiss
        * here (not before the loop) so an import that adds nothing leaves a
        * still-valid undo intact. */
+      unlockStorage();
       dismissUndoToast();
       render();
       /* Collapse the panel so the (now populated) form is pulled into view. */
@@ -1970,14 +2089,17 @@
    * because localStorage throws on some schemes (file:// in some browsers,
    * private mode, disabled storage) and a failure must never break the page. */
   var STORAGE_KEY = 'ics-gen-v2';
-  /* 2 wraps each record as { options, uid }; 1 was the flat options array that
-   * never shipped past this branch and is still accepted on restore. */
-  var STORAGE_VERSION = 2;
+  /* 3 adds calendarName/fileName; 2 wraps records as { options, uid };
+   * 1 was the flat options array and is still accepted on restore. */
+  var STORAGE_VERSION = 3;
   var MAX_RESTORED_EVENTS = MAX_EVENTS;
-  /* skipNextSave is set when a restore is refused (foreign/newer payload) so
-   * the very next automatic save does not overwrite data this version does not
-   * understand. */
-  var skipNextSave = false;
+  /* Set when a restore leaves the stored payload unreadable or only partly
+   * restored. While locked, saveEvents() writes nothing, so a metadata edit
+   * can never overwrite data this version could not fully read. An explicit
+   * event-list mutation expresses intent to move on and clears the lock. */
+  var storageLocked = false;
+
+  function unlockStorage() { storageLocked = false; }
   var SAVE_BLOCKED_MSG = "This browser blocks saving — events won't survive a reload.";
 
   /* The save warning has its own persistent element (not #status-msg) so a
@@ -2022,10 +2144,12 @@
   }
 
   function saveEvents() {
-    if (skipNextSave) { skipNextSave = false; return; }
+    if (storageLocked) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: STORAGE_VERSION,
+        calendarName: $('calendar-name').value,
+        fileName: $('download-filename').value,
         /* Each record carries its effective uid alongside the options so a
          * reload reproduces the identical UID line instead of a new random one. */
         events: cal.events.map(function (ev) {
@@ -2041,39 +2165,48 @@
     }
   }
 
-  /* Returns { restored, saved } counts. `saved` is how many records the payload
-   * held before the 200 cap so the caller can say when data was dropped. */
+  /* Returns { restored, saved, failed, unreadable }. `saved` is how many
+   * records the payload held before the 200 cap. `failed` is true when any
+   * part of the payload could not be restored, so the caller locks storage.
+   * `unreadable` marks payloads this version cannot read at all (malformed
+   * JSON, a foreign/newer version, or a missing events array). */
   function restoreEvents() {
     var raw;
     try {
       raw = localStorage.getItem(STORAGE_KEY);
-    } catch (e) { return { restored: 0, saved: 0 }; }
-    if (!raw) return { restored: 0, saved: 0 };
+    } catch (e) { return { restored: 0, saved: 0, failed: false, unreadable: false }; }
+    if (!raw) return { restored: 0, saved: 0, failed: false, unreadable: false };
 
     var data;
     try {
       data = JSON.parse(raw);
-    } catch (e) { return { restored: 0, saved: 0 }; }
+    } catch (e) { return { restored: 0, saved: 0, failed: true, unreadable: true }; }
     if (!data || typeof data !== 'object') {
-      skipNextSave = true;
-      return { restored: 0, saved: 0 };
+      return { restored: 0, saved: 0, failed: true, unreadable: true };
     }
-    /* v2 wraps each record as { options, uid }; v1 stored bare options. A
-     * newer/foreign version must not be silently replaced by an empty calendar,
-     * so skip the next automatic save until the visitor changes the list. */
+    /* Accept v1's flat options and v2's wrapped records. Missing names leave
+     * the UI defaults intact, then save migrates whatever the controls hold.
+     * A newer/foreign version is left untouched in storage. */
     var legacy = data.version === 1;
-    if (!legacy && data.version !== STORAGE_VERSION) {
-      skipNextSave = true;
-      return { restored: 0, saved: 0 };
+    if (!legacy && data.version !== 2 && data.version !== STORAGE_VERSION) {
+      return { restored: 0, saved: 0, failed: true, unreadable: true };
     }
-    if (!Array.isArray(data.events)) return { restored: 0, saved: 0 };
+    if (!Array.isArray(data.events)) {
+      return { restored: 0, saved: 0, failed: true, unreadable: true };
+    }
+    if (data.version === STORAGE_VERSION) {
+      if (typeof data.calendarName === 'string') $('calendar-name').value = data.calendarName.slice(0, 60);
+      if (typeof data.fileName === 'string') $('download-filename').value = data.fileName.slice(0, 60);
+    }
+    syncCalendarName();
 
     var saved = data.events.length;
     var count = 0;
+    var dropped = saved > MAX_RESTORED_EVENTS;
     data.events.slice(0, MAX_RESTORED_EVENTS).forEach(function (record) {
-      if (!record || typeof record !== 'object') return;
+      if (!record || typeof record !== 'object') { dropped = true; return; }
       var options = legacy ? record : record.options;
-      if (!options || typeof options !== 'object') return;
+      if (!options || typeof options !== 'object') { dropped = true; return; }
       try {
         var ev = cal.addEvent(deserializeOptions(options));
         /* v1 records carry no uid, so the fresh one addEvent generated stands. */
@@ -2086,13 +2219,14 @@
           ev.uid = uid;
         }
         count++;
-      } catch (e) { /* an event that no longer validates is skipped */ }
+      } catch (e) { dropped = true; /* an event that no longer validates is skipped */ }
     });
-    return { restored: count, saved: saved };
+    return { restored: count, saved: saved, failed: dropped, unreadable: false };
   }
 
   /* ---------- init ---------- */
 
+  syncCalendarName();
   defaultFormDates();
   populateTimeZones();
   syncAllDayUI();
@@ -2100,21 +2234,31 @@
   syncReminderUI();
   var restored = 0;
   var savedTotal = 0;
+  var restoreFailed = false;
+  var restoreUnreadable = false;
   try {
     var restoreResult = restoreEvents();
     restored = restoreResult.restored;
     savedTotal = restoreResult.saved;
+    restoreFailed = restoreResult.failed;
+    restoreUnreadable = restoreResult.unreadable;
   } catch (e) {
     /* No restore path may leave the page half-initialized: drop whatever was
-     * loaded and continue with an empty list. */
+     * loaded, lock storage and continue with an empty list. */
     cal.clear();
-    setStatus('Saved events could not be restored.', true);
+    restoreFailed = true;
+    restoreUnreadable = true;
   }
+  if (restoreFailed) storageLocked = true;
   render();
-  if (restored && savedTotal > restored) {
+  if (restoreUnreadable) {
+    setStatus('Saved events could not be restored — they were left untouched in storage.', true);
+  } else if (restored && savedTotal > restored) {
     setStatus('Restored ' + restored + ' of ' + savedTotal + ' saved events — the rest could not be restored.');
   } else if (restored) {
     setStatus('Restored ' + restored + ' saved event(s).');
+  } else if (savedTotal > 0) {
+    setStatus('Saved events could not be restored — they were left untouched in storage.', true);
   }
   /* Start keyboard visitors in the first field (no scroll-jumping). */
   $('title').focus();
