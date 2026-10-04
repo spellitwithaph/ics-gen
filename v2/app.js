@@ -1413,6 +1413,69 @@
     return bits.join(' · ');
   }
 
+  /* ---------- invite-style event card ---------- */
+
+  /* Month abbreviations for the card's date block (index 0 = January). */
+  var MONTH_ABBR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+  /* Calendar-day parts for the card's date block: an all-day event uses its
+   * UTC date parts, a timed event projects its start instant into the event's
+   * own zone (device zone when it has none) — the same wall-clock date
+   * describeEvent shows. */
+  function eventCardDateParts(ev) {
+    if (ev.allDay || isDateParts(ev.start)) {
+      /* start may be a Date revived from storage (all-day events), so
+       * normalize through the same helper googleCalendarUrl uses. */
+      var parts = datePartsOf(ev.start) || ev.start;
+      return { month: parts.month, day: parts.day };
+    }
+    var p = zoneParts(ev.start, ev.options.timezone || localTimeZone());
+    return { month: p.month, day: p.day };
+  }
+
+  /* The card at the top of the list panel summarizes the first event in
+   * display order (earliest start). Purely informational — no controls — and
+   * rebuilt on every render so it tracks add/edit/remove/import/clear/undo.
+   * Pass null (empty list) to hide it. */
+  function renderEventCard(ev) {
+    var card = $('event-card');
+    card.textContent = '';
+    if (!ev) {
+      card.hidden = true;
+      return;
+    }
+    /* describeEvent already leads with "All day" for all-day events, so the
+     * verbatim summary doubles as the variant body line; the class hooks the
+     * variant for styling. */
+    card.classList.toggle('all-day', !!ev.allDay);
+
+    var parts = eventCardDateParts(ev);
+    var dateBlock = document.createElement('div');
+    dateBlock.className = 'event-card-date';
+    var month = document.createElement('span');
+    month.className = 'event-card-month';
+    month.textContent = MONTH_ABBR[parts.month - 1];
+    var day = document.createElement('span');
+    day.className = 'event-card-day';
+    day.textContent = String(parts.day);
+    dateBlock.appendChild(month);
+    dateBlock.appendChild(day);
+
+    var body = document.createElement('div');
+    body.className = 'event-card-body';
+    var title = document.createElement('strong');
+    title.textContent = ev.options.title;
+    var summary = document.createElement('small');
+    summary.textContent = describeEvent(ev);
+    body.appendChild(title);
+    body.appendChild(summary);
+
+    card.appendChild(dateBlock);
+    card.appendChild(body);
+    card.hidden = false;
+  }
+
   /* ---------- Google Calendar link ---------- */
 
   function gcalTimestamp(date) {
@@ -1519,6 +1582,8 @@
   function render() {
     var list = $('event-list');
     list.textContent = '';
+    var entries = sortedEventEntries();
+    renderEventCard(entries.length ? entries[0].ev : null);
 
     if (!cal.events.length) {
       /* Friendly empty state inside the same list semantics: a short line and
@@ -1551,7 +1616,7 @@
       emptyLi.appendChild(emptyActions);
       list.appendChild(emptyLi);
     } else {
-      sortedEventEntries().forEach(function (entry) {
+      entries.forEach(function (entry) {
         var ev = entry.ev;
         var i = entry.realIndex;
         var li = document.createElement('li');
@@ -1559,6 +1624,10 @@
 
         var info = document.createElement('div');
         info.className = 'event-info';
+        var glyph = document.createElement('span');
+        glyph.className = 'event-glyph';
+        glyph.setAttribute('aria-hidden', 'true');
+        info.appendChild(glyph);
         var strong = document.createElement('strong');
         strong.textContent = ev.options.title;
         strong.tabIndex = -1; /* programmatic focus target after an update */
@@ -1643,8 +1712,9 @@
      * states how much it will export. Reset on every render (add, import,
      * clear, undo), so it can never lag the list. */
     $('download-btn').textContent = has ? 'Download .ics (' + cal.events.length + ')' : 'Download .ics';
-    /* The preview starts expanded (see the `open` attribute in index.html) and
-     * never auto-collapses; the visitor can still toggle it. */
+    /* The preview text updates on every render regardless of the <details>
+     * open state; index.html ships the box collapsed behind the "View code"
+     * summary and the visitor can expand it at will. */
 
     saveEvents();
   }

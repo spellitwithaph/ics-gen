@@ -10,7 +10,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-10-04T13:37:16Z` (ISO 8601, UTC)
+> **Last updated:** `2026-10-04T14:18:33Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -57,8 +57,10 @@ v1 (each point is verifiable in `v2/app.js`, `v2/ics.js`, and
   end wall time falls in the repeated hour of a DST fall-back, the generator
   emits `DTEND` in UTC (`…Z`) so the duration stays unambiguous next to the
   `TZID`'d `DTSTART`.
-- **Appearance** — automatic dark mode (`prefers-color-scheme`), a preview
-  wrap toggle, and a copy button on the preview.
+- **Appearance** — automatic dark mode (`prefers-color-scheme`), the raw
+  `.ics` text behind a collapsed "View code" toggle (the wrap and copy
+  controls still live on that panel), and an invite-style card at the top of
+  the list panel summarizing the next event (the earliest one).
 
 The v2 libraries ship with the repo's zero-dependency Node test suite: 108
 passing tests covering the generator (option validation, escaping and folding,
