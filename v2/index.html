@@ -171,9 +171,21 @@
             <label for="recur-interval">Every …</label>
             <input id="recur-interval" type="number" min="1" max="99" value="1">
           </div>
-          <div class="field" id="field-until">
-            <label for="recur-until">Until (optional)</label>
-            <input id="recur-until" type="date">
+          <div class="field" id="field-end">
+            <label for="recur-end">Ends</label>
+            <select id="recur-end">
+              <option value="never" selected>Never</option>
+              <option value="after">After … times</option>
+              <option value="on-date">On date</option>
+            </select>
+            <div class="field end-sub" id="field-count" hidden>
+              <label for="recur-count">Occurrences</label>
+              <input id="recur-count" type="number" min="1" max="999" step="1" value="1">
+            </div>
+            <div class="field end-sub" id="field-until" hidden>
+              <label for="recur-until">Until</label>
+              <input id="recur-until" type="date">
+            </div>
           </div>
           <div class="field span-all" id="field-byday" hidden>
             <span class="day-picker-label" id="byday-label">On days</span>

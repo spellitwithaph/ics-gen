@@ -170,6 +170,8 @@ textarea { resize: vertical; }
 
 /* Weekly day-of-week picker: an inline row of compact .check-style boxes. */
 .field-row .field.span-all { grid-column: 1 / -1; }
+/* Nested controls inside the Ends group sit under its select. */
+.end-sub { margin: 8px 0 0; }
 .day-picker-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 .day-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
 .day-check {

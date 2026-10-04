@@ -273,8 +273,11 @@
   function syncRecurUI() {
     var freq = $('recur-freq').value;
     var off = freq === 'NONE';
+    var end = $('recur-end').value;
     $('field-interval').hidden = off;
-    $('field-until').hidden = off;
+    $('field-end').hidden = off;
+    $('field-count').hidden = off || end !== 'after';
+    $('field-until').hidden = off || end !== 'on-date';
     $('field-byday').hidden = off || freq !== 'WEEKLY';
     /* Down to just the select? Let it span a Status-select-sized column
      * instead of the first third of the row (which clips "Does not repeat"). */
@@ -294,6 +297,8 @@
     syncRecurUI();
     updateKeptHint();
   });
+  $('recur-end').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
+  $('recur-count').addEventListener('change', updateKeptHint);
   $('reminder-toggle').addEventListener('change', function () { syncReminderUI(); updateKeptHint(); });
   /* The "kept as-is" hint names only what the current controls will actually
    * preserve, so refresh it whenever one of them changes. */
@@ -567,17 +572,27 @@
         var days = sortByday(readByday());
         if (days.length) parts.push('BYDAY=' + days.join(','));
       }
-      var until = $('recur-until').value;
-      if (until) {
-        var up = parseDateInput(until);
-        if (allDay) {
-          parts.push('UNTIL=' + IcsGenerator.formatDateUTC({ year: up.year, month: up.month, day: up.day }));
+      var end = $('recur-end').value;
+      if (end === 'after') {
+        var count = parseInt($('recur-count').value, 10);
+        if (!(count >= 1)) {
+          errors['recur-count'] = 'Pick how many occurrences (1 or more).';
         } else {
-          /* End of that day in the event's zone, converted to UTC (UNTIL for a
-           * timed rule must be a UTC instant). */
-          parts.push('UNTIL=' + IcsGenerator.formatDateTimeUTC(
-            zonedTimeToDate(up.year, up.month, up.day, 23, 59, opts.timezone || 'UTC', 59)
-          ));
+          parts.push('COUNT=' + count);
+        }
+      } else if (end === 'on-date') {
+        var until = $('recur-until').value;
+        if (until) {
+          var up = parseDateInput(until);
+          if (allDay) {
+            parts.push('UNTIL=' + IcsGenerator.formatDateUTC({ year: up.year, month: up.month, day: up.day }));
+          } else {
+            /* End of that day in the event's zone, converted to UTC (UNTIL for a
+             * timed rule must be a UTC instant). */
+            parts.push('UNTIL=' + IcsGenerator.formatDateTimeUTC(
+              zonedTimeToDate(up.year, up.month, up.day, 23, 59, opts.timezone || 'UTC', 59)
+            ));
+          }
         }
       }
       opts.rrule = parts.join(';');
@@ -663,10 +678,13 @@
   }
 
   /* Only the form's simple subset is representable: FREQ, INTERVAL, a weekly
-   * BYDAY, and UNTIL. Anything else (COUNT, BYDAY on a non-weekly rule,
-   * ordinal BYDAY, …) is preserved on the event but not loaded. */
+   * BYDAY, and an end that is either UNTIL or COUNT (never both). Anything else
+   * (BYDAY on a non-weekly rule, ordinal BYDAY, …) is preserved on the event but
+   * not loaded. */
   function simpleRule(rule, allDay, tz) {
-    var out = { freq: null, interval: 1, until: '', byday: null };
+    var out = { freq: null, interval: 1, until: '', count: null, byday: null };
+    var seenUntil = false;
+    var seenCount = false;
     var parts = String(rule).split(';');
     for (var i = 0; i < parts.length; i++) {
       var kv = parts[i].split('=');
@@ -685,11 +703,20 @@
         var u = untilToDate(v, allDay, tz);
         if (!u) return null;
         out.until = u;
+        seenUntil = true;
+      } else if (k === 'COUNT') {
+        if (!/^\d+$/.test(v)) return null;
+        var n = parseInt(v, 10);
+        if (!(n >= 1)) return null;
+        out.count = n;
+        seenCount = true;
       } else {
         return null;
       }
     }
     if (!out.freq) return null;
+    /* UNTIL and COUNT are mutually exclusive in RFC 5545. */
+    if (seenUntil && seenCount) return null;
     /* BYDAY only means anything on a weekly rule in this simple form. */
     if (out.byday && out.freq !== 'WEEKLY') return null;
     return out;
@@ -899,7 +926,10 @@
     var rule = ev.rrule ? simpleRule(ev.rrule, allDay, timezoneEl.value) : null;
     $('recur-freq').value = rule ? rule.freq : 'NONE';
     $('recur-interval').value = rule ? rule.interval : 1;
+    $('recur-count').value = rule && rule.count != null ? rule.count : 1;
     $('recur-until').value = rule ? rule.until : '';
+    $('recur-end').value = !rule ? 'never'
+      : (rule.count != null ? 'after' : (rule.until ? 'on-date' : 'never'));
     if (rule && rule.byday) {
       setByday(rule.byday);
     } else if (rule && rule.freq === 'WEEKLY') {
