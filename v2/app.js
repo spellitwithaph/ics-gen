@@ -1504,11 +1504,13 @@
    * the focus jump. */
   function focusFormTitle() {
     var form = $('event-form');
-    if (window.matchMedia && window.matchMedia('(max-width: 920px)').matches && form && form.scrollIntoView) {
+    var smallScreen = window.matchMedia && window.matchMedia('(max-width: 920px)').matches;
+    if (smallScreen && form && form.scrollIntoView) {
       form.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     try {
-      $('title').focus({ preventScroll: true });
+      if (smallScreen) $('title').focus({ preventScroll: true });
+      else $('title').focus();
     } catch (e) {
       $('title').focus();
     }
