@@ -715,8 +715,11 @@
       var end = $('recur-end').value;
       if (end === 'after') {
         var countEl = $('recur-count');
-        var count = Number.isFinite(countEl.valueAsNumber) ? countEl.valueAsNumber : parseFloat(countEl.value);
-        if (!Number.isFinite(count) || Math.floor(count) !== count || count < 1 || count > 999) {
+        /* Same raw-spelling rule as reminder rows: '1e2' must not slip through
+         * as COUNT=100. */
+        var rawCount = String(countEl.value).trim();
+        var count = Number(rawCount);
+        if (!/^[0-9]{1,3}$/.test(rawCount) || !Number.isInteger(count) || count < 1 || count > 999) {
           errors['recur-count'] = 'Pick a whole number of occurrences (1-999).';
         } else {
           parts.push('COUNT=' + count);
@@ -738,8 +741,11 @@
     var alarms = [];
     for (var ri = 0; ri < reminders.length; ri++) {
       var valueInput = reminders[ri].querySelector('.reminder-value');
-      var n = valueInput.valueAsNumber;
-      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 999) {
+      /* Validate the raw spelling, not valueAsNumber: '1e2' parses to 100 but
+       * is not a whole-number literal the form should accept. */
+      var rawValue = String(valueInput.value).trim();
+      var n = Number(rawValue);
+      if (!/^[0-9]{1,3}$/.test(rawValue) || !Number.isInteger(n) || n < 1 || n > 999) {
         errors[valueInput.id] = 'Reminder ' + (ri + 1) + ': pick a whole number from 1 to 999.';
       } else {
         alarms.push({ trigger: triggerFromParts({ value: n, unit: reminders[ri].querySelector('.reminder-unit').value }) });

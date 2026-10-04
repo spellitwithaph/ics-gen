@@ -47,14 +47,36 @@ test('absent TRANSP and PRIORITY remain absent in parsed objects', function () {
   assert.ok(!Object.prototype.hasOwnProperty.call(ev, 'priority'));
 });
 
-test('invalid TRANSP and zero or invalid PRIORITY are ignored on parse', function () {
+test('invalid TRANSP and zero or invalid PRIORITY are ignored with warnings', function () {
   ['0', '10', '-1', '1.5', 'garbage'].forEach(function (priority) {
-    var ev = parse(ics(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'SUMMARY:Invalid',
+    var result = parse(ics(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'SUMMARY:Invalid',
       'DTSTART:20260105T100000Z', 'TRANSP:BUSY', 'PRIORITY:' + priority,
-      'END:VEVENT', 'END:VCALENDAR'])).events[0];
+      'END:VEVENT', 'END:VCALENDAR']));
+    var ev = result.events[0];
     assert.ok(!Object.prototype.hasOwnProperty.call(ev, 'transp'));
     assert.ok(!Object.prototype.hasOwnProperty.call(ev, 'priority'));
+    assert.includes(result.warnings, 'Ignored an unreadable TRANSP value.');
+    assert.includes(result.warnings, 'Ignored an unreadable PRIORITY value.');
   });
+});
+
+test('lowercase transparent parses to TRANSPARENT and a valid priority has no warning', function () {
+  var result = parse(ics(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'SUMMARY:Valid',
+    'DTSTART:20260105T100000Z', 'TRANSP:transparent', 'PRIORITY:9',
+    'END:VEVENT', 'END:VCALENDAR']));
+  var ev = result.events[0];
+  assert.eq(ev.transp, 'TRANSPARENT');
+  assert.eq(ev.priority, 9);
+  assert.eq(result.warnings.length, 0);
+});
+
+test("priority '09' is rejected with a warning", function () {
+  var result = parse(ics(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'SUMMARY:Leading zero',
+    'DTSTART:20260105T100000Z', 'PRIORITY:09',
+    'END:VEVENT', 'END:VCALENDAR']));
+  var ev = result.events[0];
+  assert.ok(!Object.prototype.hasOwnProperty.call(ev, 'priority'));
+  assert.includes(result.warnings, 'Ignored an unreadable PRIORITY value.');
 });
 
 /* ---------- unfolding & value parsing ---------- */

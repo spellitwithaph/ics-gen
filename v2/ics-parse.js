@@ -402,8 +402,14 @@
     if ((p = propNamed(comp, 'LOCATION'))) ev.location = unescapeText(p.value);
     if ((p = propNamed(comp, 'URL'))) ev.url = String(p.value).trim();
     if ((p = propNamed(comp, 'STATUS'))) ev.status = upper(p.value);
-    if ((p = propNamed(comp, 'TRANSP')) && /^(OPAQUE|TRANSPARENT)$/.test(upper(p.value))) ev.transp = upper(p.value);
-    if ((p = propNamed(comp, 'PRIORITY')) && /^[1-9]$/.test(String(p.value).trim())) ev.priority = Number(p.value);
+    if ((p = propNamed(comp, 'TRANSP'))) {
+      if (/^(OPAQUE|TRANSPARENT)$/.test(upper(p.value))) ev.transp = upper(p.value);
+      else warnings.push('Ignored an unreadable TRANSP value.');
+    }
+    if ((p = propNamed(comp, 'PRIORITY'))) {
+      if (/^[1-9]$/.test(String(p.value).trim())) ev.priority = Number(p.value);
+      else warnings.push('Ignored an unreadable PRIORITY value.');
+    }
     if ((p = propNamed(comp, 'RRULE'))) ev.rrule = String(p.value).trim();
 
     propsNamed(comp, 'CATEGORIES').forEach(function (c) {

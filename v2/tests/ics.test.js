@@ -618,6 +618,38 @@ test('updateEvent validates options exactly like addEvent', function () {
   assert.eq(cal.events[0].options.title, 'A');
 });
 
+test('updateEvent accepts and re-validates transp and priority like addEvent', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'A',
+    start: new Date('2026-01-05T10:00:00Z'),
+    durationMinutes: 30,
+    transp: 'OPAQUE',
+    priority: 5
+  });
+  var updated = cal.updateEvent(0, {
+    title: 'A',
+    start: new Date('2026-01-05T10:00:00Z'),
+    durationMinutes: 30,
+    transp: 'TRANSPARENT',
+    priority: 9
+  });
+  assert.eq(updated.options.transp, 'TRANSPARENT');
+  assert.eq(updated.options.priority, 9);
+  var text = unfold(cal.toString());
+  assert.includes(text, 'TRANSP:TRANSPARENT');
+  assert.includes(text, 'PRIORITY:9');
+
+  assert.throws(function () {
+    cal.updateEvent(0, { title: 'A', start: new Date('2026-01-05T10:00:00Z'), transp: 'BUSY' });
+  }, /event "transp"/);
+  assert.throws(function () {
+    cal.updateEvent(0, { title: 'A', start: new Date('2026-01-05T10:00:00Z'), priority: 10 });
+  }, /event "priority"/);
+  assert.eq(cal.events[0].options.transp, 'TRANSPARENT', 'a failed update must not change the event');
+  assert.eq(cal.events[0].options.priority, 9);
+});
+
 test('updateEvent replaces alarms and attendees arrays instead of merging them', function () {
   var cal = new ICS.Calendar();
   cal.addEvent({
