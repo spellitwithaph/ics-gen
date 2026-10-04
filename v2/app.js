@@ -840,7 +840,9 @@
       } else if (k === 'COUNT') {
         if (!/^\d+$/.test(v)) return null;
         var n = parseInt(v, 10);
-        if (!(n >= 1)) return null;
+        /* Only counts the form can re-emit (readForm validates 1..999) count
+         * as representable; anything else is preserved via the kept-RRULE path. */
+        if (!(n >= 1 && n <= 999)) return null;
         out.count = n;
         seenCount = true;
       } else {
