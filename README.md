@@ -178,8 +178,9 @@ Everything lives on the `IcsGenerator` global (or the Node `module.exports`).
 | --- | --- | --- |
 | `name` | `string` | Sets `X-WR-CALNAME` — the calendar title shown by Google/Apple. |
 | `desc` | `string` | Sets `X-WR-CALDESC`. |
+| `includeVtimezone` | `boolean` | **(v2)** Default `false`. Emits a best-effort `VTIMEZONE` block for every unique event `TZID` before the `VEVENT`s, so strict/offline clients can resolve the `TZID` without their own tz data. |
 
-Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `boolean` · `clear()` · `toString()` → full `.ics` text · `.events` array.
+Methods: `addEvent(options)` → `VEvent` · `updateEvent(indexOrEvent, options)` → `VEvent | false` **(v2)** · `removeEvent(indexOrEvent)` → `boolean` · `clear()` · `toString()` → full `.ics` text · `.events` array.
 
 ### `cal.addEvent(options)`
 
@@ -201,6 +202,19 @@ Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `bo
 | `alarms` | `Array<{trigger, description?, action?}>` | | `trigger` is a minute number (`-15`) or an ISO 8601 duration string (`-PT30M`, `-P2D`, …). Each array entry emits its own `VALARM` inside that event's `VEVENT`, so every event — and every reminder of an event — is independent. `description` defaults to the event title. Any value containing control characters throws. |
 | `attendees` | `Array<{email, name?, role?, status?, rsvp?}>` | | Emitted as `ATTENDEE;CN=…;ROLE=…;PARTSTAT=…:mailto:…`. `email` is validated (non-empty local part + dotted domain, no whitespace); `name`, `role` and `status` must not contain control characters. |
 | `organizer` | `{email, name?}` | | Emitted as `ORGANIZER;CN=…:mailto:…`. `email` validated as above. |
+| `transp` | `string` | | **(v2)** `OPAQUE` (busy, the default) or `TRANSPARENT` (free) → `TRANSP`. Emitted only when set; other values throw. |
+| `priority` | `number` | | **(v2)** Integer 0–9 (1 highest, 9 lowest) → `PRIORITY`. Emitted when ≥ 1; `0`/omitted emit no line. Non-integers or values outside 0–9 throw. |
+
+### `cal.updateEvent(indexOrEvent, options)` **(v2)**
+
+Replaces the event at `indexOrEvent` (a numeric index or an existing `VEvent`)
+with a new one built from `options`, in place — the new `VEvent` takes the same
+slot, so list position is preserved. Options run through the same validation as
+`addEvent`, and the replacement is built before the calendar is touched, so
+invalid options throw without changing it. When `options.uid` is omitted, the
+previous event's uid is carried over, keeping the event's identity stable
+across regenerations. Returns the new `VEvent`, or `false` when the target does
+not exist.
 
 ### `IcsGenerator.parse(text)` / `parseEvents(text)`
 
@@ -213,8 +227,12 @@ const { calendar, events, warnings, counts } = IcsGenerator.parse(icsText);
 
 `calendar` carries `X-WR-CALNAME`/`X-WR-CALDESC`; `events` is one object per
 `VEVENT` with `start`/`end` as `Date` or `{year, month, day}`, plus `allDay`,
-`timezone`, `rrule`, `alarms`, `organizer`, `attendees`, `categories`, and an
-`unsupported` list; `warnings` explains anything dropped or approximated.
+`timezone`, `rrule`, `alarms`, `organizer`, `attendees`, `categories`, `transp`
+and `priority` **(v2)**, and an `unsupported` list; `warnings` explains anything
+dropped or approximated — an unreadable `TRANSP` or `PRIORITY` value is
+ignored with a note (`Ignored an unreadable TRANSP value.` / `Ignored an
+unreadable PRIORITY value.`), as is a `DTEND` that is not after `DTSTART`
+(`DTEND is not after DTSTART; kept as-is.`).
 `parseEvents(text)` returns just the events. The reader handles line folding,
 quoted parameters, TEXT unescaping, `TZID` (IANA and common Windows/Outlook
 names), a `VTIMEZONE` fixed-offset fallback, `DURATION`, and all-day / floating
