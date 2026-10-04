@@ -1721,11 +1721,11 @@
     /* 1. recurring standup — remind 10 min before (number trigger) */
     cal.addEvent({
       title: 'Team standup',
-      description: 'Daily sync — what I did, what I am doing, blockers.',
+      description: 'Mon/Wed/Fri sync — what I did, what I am doing, blockers.',
       location: 'Zoom',
       start: nextWeekday(1, 9, 0),
       durationMinutes: 30,
-      rrule: 'FREQ=WEEKLY',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR',
       categories: ['Work', 'Standup'],
       alarms: [{ trigger: -10 }]
     });
