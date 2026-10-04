@@ -1958,12 +1958,13 @@
     }
 
     /* An imported calendar name fills the input only while it still shows the
-     * built-in default, so a customized name is never overwritten. */
+     * built-in default; blank or whitespace names are intentional and stay
+     * untouched, so a customized name is never overwritten either. */
     var importedName = result.calendar && typeof result.calendar.name === 'string'
       ? result.calendar.name.trim() : '';
     if (importedName) {
       var currentName = $('calendar-name').value.trim();
-      if (!currentName || currentName === 'My Events') {
+      if (currentName === 'My Events') {
         $('calendar-name').value = importedName.slice(0, 60);
         syncCalendarName();
       }
