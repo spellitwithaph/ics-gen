@@ -20,14 +20,48 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 
 A v2 of the site is in development and served from `/v2/`, so the stable
 version can keep running untouched at the site root. `/` remains v1; `/v2/` is
-the preview where new work lands until it is promoted.
+the preview where new work lands until it is promoted. What `/v2/` adds over
+v1 (each point is verifiable in `v2/app.js`, `v2/ics.js`, and
+`v2/ics-parse.js`):
 
-The v2 libraries ship with the repo's zero-dependency Node test suite. Run it
-from the repo root:
+- **Event list** — edit events in place (the UID is kept stable across an
+  edit), duplicate them with one click, and see them sorted by start date.
+  Status messages and the event count are announced to screen readers
+  (`role="status"` / `aria-live`). Removing, clearing, and loading samples show
+  an undo toast (about 8 seconds, paused while hovered or focused; Escape and
+  Ctrl/Cmd+Z also work) instead of confirm dialogs.
+- **Persistence** — events, the calendar name, the download filename, and the
+  VTIMEZONE preference are saved in the browser's localStorage, so events are
+  restored on reload. Saved data is treated as untrusted: a payload that
+  cannot be fully restored never gets overwritten — storage stays locked until
+  a real list change.
+- **Form** — inline per-field validation with focus moved to the first invalid
+  field; a weekly day-of-week picker plus occurrence-count and end-date
+  recurrence ends; rules the form cannot represent exactly are preserved on
+  edit (a hint names what is kept); a type-to-filter time zone picker showing
+  each zone's current UTC offset; multiple reminders per event (up to five);
+  Show-as busy/free (`TRANSP`) and priority; organizer/attendees as before.
+- **Import** — parser notes are surfaced in a collapsed list; imported events
+  can be added or replace the current list; a calendar name from
+  `X-WR-CALNAME` is picked up while the name field still shows the default.
+- **Output** — a Google Calendar link per event, optional VTIMEZONE blocks (an
+  opt-in checkbox; transitions are sampled across the years the events span —
+  approximate for zones with exotic history), and a custom download filename.
+- **Appearance** — automatic dark mode (`prefers-color-scheme`), a preview
+  wrap toggle, and a copy button on the preview.
+
+The v2 libraries ship with the repo's zero-dependency Node test suite: 105
+passing tests covering the generator (option validation, escaping and folding,
+time-zone conversion, VTIMEZONE emission, `TRANSP`/`PRIORITY`, `updateEvent`)
+and the parser (round trips, warnings, and zone fallbacks). Run it from the
+repo root:
 
 ```bash
 node v2/tests/run.js
 ```
+
+The Quick start, API reference, and remaining sections below describe the v1
+demo at the repo root unless marked otherwise.
 
 ## Is this possible on a static site? Yes.
 
