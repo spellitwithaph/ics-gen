@@ -131,6 +131,7 @@
 
         <div class="field" id="field-timezone">
           <label for="timezone">Time zone</label>
+          <input id="timezone-filter" type="search" placeholder="Type to filter zones" aria-label="Filter time zones" autocomplete="off">
           <select id="timezone" aria-describedby="timezone-hint"></select>
           <p class="hint" id="timezone-hint">Start and end times are read as wall-clock
           time in this zone. Defaults to the zone your device reports.</p>
@@ -171,9 +172,33 @@
             <label for="recur-interval">Every …</label>
             <input id="recur-interval" type="number" min="1" max="99" value="1">
           </div>
-          <div class="field" id="field-until">
-            <label for="recur-until">Until (optional)</label>
-            <input id="recur-until" type="date">
+          <div class="field" id="field-end">
+            <label for="recur-end">Ends</label>
+            <select id="recur-end">
+              <option value="never" selected>Never</option>
+              <option value="after">After … times</option>
+              <option value="on-date">On date</option>
+            </select>
+            <div class="field end-sub" id="field-count" hidden>
+              <label for="recur-count">Occurrences</label>
+              <input id="recur-count" type="number" min="1" max="999" step="1" value="1">
+            </div>
+            <div class="field end-sub" id="field-until" hidden>
+              <label for="recur-until">Until</label>
+              <input id="recur-until" type="date">
+            </div>
+          </div>
+          <div class="field span-all" id="field-byday" hidden>
+            <span class="day-picker-label" id="byday-label">On days</span>
+            <div class="day-picker" role="group" aria-labelledby="byday-label">
+              <label class="day-check"><input type="checkbox" id="byday-mo" value="MO"> Mon</label>
+              <label class="day-check"><input type="checkbox" id="byday-tu" value="TU"> Tue</label>
+              <label class="day-check"><input type="checkbox" id="byday-we" value="WE"> Wed</label>
+              <label class="day-check"><input type="checkbox" id="byday-th" value="TH"> Thu</label>
+              <label class="day-check"><input type="checkbox" id="byday-fr" value="FR"> Fri</label>
+              <label class="day-check"><input type="checkbox" id="byday-sa" value="SA"> Sat</label>
+              <label class="day-check"><input type="checkbox" id="byday-su" value="SU"> Sun</label>
+            </div>
           </div>
         </div>
 

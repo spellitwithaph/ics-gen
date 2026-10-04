@@ -123,26 +123,87 @@
     return opt;
   }
 
-  /* Device zone first and selected, then UTC, then every IANA zone grouped by
-   * region. Populated from Intl so the list stays current without a hard-coded
-   * table in the HTML. */
-  function populateTimeZones() {
-    var sel = timezoneEl;
-    var local = localTimeZone();
-    sel.textContent = '';
+  /* Session caches: "UTC±HH:MM" labels keyed by zone, and the full IANA zone
+   * list. Offsets are computed once per zone, the first time it is shown. */
+  var zoneOffsetCache = {};
+  var allZonesCache = null;
 
-    sel.appendChild(timeZoneOption(local, local + ' (your device)'));
-    if (local !== 'UTC') {
-      sel.appendChild(timeZoneOption('UTC', 'UTC (Coordinated Universal Time)'));
+  function formatOffsetMinutes(minutes) {
+    var sign = minutes < 0 ? '-' : '+';
+    var abs = Math.abs(minutes);
+    return sign + pad2(Math.floor(abs / 60)) + ':' + pad2(abs % 60);
+  }
+
+  /* Offset in minutes, derived from the zone's wall clock vs UTC right now. */
+  function wallClockOffset(zone) {
+    var now = new Date();
+    var z = zoneParts(now, zone);
+    var u = zoneParts(now, 'UTC');
+    var diff = Date.UTC(z.year, z.month - 1, z.day, z.hour, z.minute, z.second) -
+      Date.UTC(u.year, u.month - 1, u.day, u.hour, u.minute, u.second);
+    return Math.round(diff / 60000);
+  }
+
+  /* "UTC+02:00" for a zone right now. Intl's longOffset is authoritative and
+   * handles Etc/GMT±N (whose zone-name signs are inverted); wall-clock math is
+   * the fallback for engines without longOffset. */
+  function utcOffset(zone) {
+    if (Object.prototype.hasOwnProperty.call(zoneOffsetCache, zone)) return zoneOffsetCache[zone];
+    var label = null;
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone, timeZoneName: 'longOffset'
+      }).formatToParts(new Date());
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].type !== 'timeZoneName') continue;
+        var name = parts[i].value;
+        if (name === 'GMT' || name === 'UTC') { label = 'UTC+00:00'; break; }
+        var m = /^(?:GMT|UTC)([+-])(\d{1,2})(?::?(\d{2}))?$/.exec(name);
+        if (m) { label = 'UTC' + m[1] + pad2(parseInt(m[2], 10)) + ':' + (m[3] || '00'); break; }
+      }
+    } catch (e) { /* fall back below */ }
+    if (!label) {
+      try { label = 'UTC' + formatOffsetMinutes(wallClockOffset(zone)); }
+      catch (e2) { return null; }
     }
+    zoneOffsetCache[zone] = label;
+    return label;
+  }
 
+  /* A failed offset lookup stays uncached and has no misleading suffix. */
+  function timeZoneLabel(zone, device) {
+    var offset = utcOffset(zone);
+    return offset ? zone + ' (' + (device ? 'your device, ' : '') + offset + ')' : zone;
+  }
+
+  /* Every IANA zone the picker can show, excluding the device zone and UTC
+   * (both pinned separately). Built once per session. */
+  function allTimeZones() {
+    if (allZonesCache) return allZonesCache;
+    var local = localTimeZone();
     var zones = availableTimeZones();
     if (zones.indexOf(local) === -1) zones.push(local);
     zones = zones.filter(function (z, i) {
       return z && zones.indexOf(z) === i && z !== local && z !== 'UTC';
     });
     zones.sort();
+    allZonesCache = zones;
+    return allZonesCache;
+  }
 
+  function timeZoneFilterValue() {
+    var el = $('timezone-filter');
+    return el ? String(el.value || '').trim() : '';
+  }
+
+  function optionValueExists(sel, value) {
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === value) return true;
+    }
+    return false;
+  }
+
+  function appendZoneGroups(sel, zones) {
     var groups = {};
     zones.forEach(function (z) {
       var g = timeZoneGroup(z);
@@ -151,11 +212,76 @@
     Object.keys(groups).sort().forEach(function (g) {
       var og = document.createElement('optgroup');
       og.label = g;
-      groups[g].forEach(function (z) { og.appendChild(timeZoneOption(z)); });
+      groups[g].forEach(function (z) {
+        og.appendChild(timeZoneOption(z, timeZoneLabel(z)));
+      });
       sel.appendChild(og);
     });
+  }
 
-    sel.value = local;
+  /* Build the option list for the current filter: device zone pinned first,
+   * then UTC, then every IANA zone grouped by region. A non-empty filter keeps
+   * only matching zones, but always keeps the currently-selected value so the
+   * select can never lose it. */
+  function renderTimeZones() {
+    var sel = timezoneEl;
+    var local = localTimeZone();
+    var filter = timeZoneFilterValue();
+    var needle = filter.toLowerCase();
+    var current = sel.value || local;
+    sel.textContent = '';
+
+    var matches = function (zone) {
+      return !needle || zone.toLowerCase().indexOf(needle) !== -1;
+    };
+
+    var matchedAny = false;
+    if (matches(local)) {
+      sel.appendChild(timeZoneOption(local, timeZoneLabel(local, true)));
+      matchedAny = true;
+    }
+    if (local !== 'UTC' && matches('UTC')) {
+      sel.appendChild(timeZoneOption('UTC', 'UTC (Coordinated Universal Time)'));
+      matchedAny = true;
+    }
+
+    var zones = allTimeZones().filter(matches);
+    if (zones.length) matchedAny = true;
+    appendZoneGroups(sel, zones);
+
+    if (!optionValueExists(sel, current)) {
+      sel.insertBefore(timeZoneOption(current, timeZoneLabel(current)), sel.firstChild);
+    }
+
+    if (filter && !matchedAny) {
+      var none = document.createElement('option');
+      none.disabled = true;
+      none.textContent = 'No zones match "' + filter + '"';
+      sel.appendChild(none);
+    }
+
+    sel.value = current;
+  }
+
+  /* Device zone first and selected, then UTC, then every IANA zone grouped by
+   * region. Populated from Intl so the list stays current without a hard-coded
+   * table in the HTML. */
+  function populateTimeZones() {
+    var filterEl = $('timezone-filter');
+    if (filterEl) filterEl.value = '';
+    renderTimeZones();
+    timezoneEl.value = localTimeZone();
+  }
+
+  /* Set the select to `zone`, clearing an active filter first when the target
+   * zone is not currently listed so populateForm can never silently drop it. */
+  function setTimeZoneValue(zone) {
+    zone = zoneForForm(zone);
+    if (!optionValueExists(timezoneEl, zone) && timeZoneFilterValue()) {
+      $('timezone-filter').value = '';
+      renderTimeZones();
+    }
+    timezoneEl.value = zone;
   }
 
   /* Calendar-day identity for a Date in a zone (browser zone when omitted). */
@@ -212,10 +338,73 @@
     }
   }
 
+  /* Weekly recurrence day codes in RFC 5545 / calendar order. */
+  var WEEKDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+
+  function bydayBoxes() {
+    return document.querySelectorAll('#field-byday input[type="checkbox"]');
+  }
+
+  /* Checked day codes, in the picker's DOM order (already MO…SU). */
+  function readByday() {
+    var boxes = bydayBoxes();
+    var out = [];
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked) out.push(boxes[i].value);
+    }
+    return out;
+  }
+
+  function setByday(days) {
+    var boxes = bydayBoxes();
+    var want = days || [];
+    for (var i = 0; i < boxes.length; i++) {
+      boxes[i].checked = want.indexOf(boxes[i].value) !== -1;
+    }
+  }
+
+  /* Canonical MO…SU order so a representable rule always re-emits identically. */
+  function sortByday(days) {
+    return WEEKDAY_CODES.filter(function (code) { return days.indexOf(code) !== -1; });
+  }
+
+  /* BYDAY value → canonical day codes, or null when any token is not one of the
+   * seven weekday codes (ordinals like "2MO", malformed/empty values). */
+  function parseByday(value) {
+    var tokens = String(value).toUpperCase().split(',');
+    var days = [];
+    for (var i = 0; i < tokens.length; i++) {
+      var code = tokens[i].trim();
+      if (WEEKDAY_CODES.indexOf(code) === -1) return null;
+      if (days.indexOf(code) === -1) days.push(code);
+    }
+    return days.length ? sortByday(days) : null;
+  }
+
+  /* The weekday of the current start date, as a BYDAY code. */
+  function startWeekdayCode() {
+    if (!startDateEl.value) return null;
+    var p = parseDateInput(startDateEl.value);
+    var d = new Date(p.year, p.month - 1, p.day);
+    return WEEKDAY_CODES[(d.getDay() + 6) % 7];
+  }
+
+  /* Entering WEEKLY with nothing checked defaults to the start date's weekday. */
+  function defaultBydayToStart() {
+    if (readByday().length) return;
+    var code = startWeekdayCode();
+    if (code) setByday([code]);
+  }
+
   function syncRecurUI() {
-    var off = $('recur-freq').value === 'NONE';
+    var freq = $('recur-freq').value;
+    var off = freq === 'NONE';
+    var end = $('recur-end').value;
     $('field-interval').hidden = off;
-    $('field-until').hidden = off;
+    $('field-end').hidden = off;
+    $('field-count').hidden = off || end !== 'after';
+    $('field-until').hidden = off || end !== 'on-date';
+    $('field-byday').hidden = off || freq !== 'WEEKLY';
     /* Down to just the select? Let it span a Status-select-sized column
      * instead of the first third of the row (which clips "Does not repeat"). */
     $('recur-row').classList.toggle('single', off);
@@ -229,7 +418,13 @@
   }
 
   $('all-day').addEventListener('change', syncAllDayUI);
-  $('recur-freq').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
+  $('recur-freq').addEventListener('change', function () {
+    if ($('recur-freq').value === 'WEEKLY') defaultBydayToStart();
+    syncRecurUI();
+    updateKeptHint();
+  });
+  $('recur-end').addEventListener('change', function () { syncRecurUI(); updateKeptHint(); });
+  $('recur-count').addEventListener('change', updateKeptHint);
   $('reminder-toggle').addEventListener('change', function () { syncReminderUI(); updateKeptHint(); });
   /* The "kept as-is" hint names only what the current controls will actually
    * preserve, so refresh it whenever one of them changes. */
@@ -285,6 +480,7 @@
   /* The cached start instant is zone-dependent; re-read it when the zone changes
    * so a later start change measures duration from the correct instant. */
   timezoneEl.addEventListener('change', rememberStartInstant);
+  $('timezone-filter').addEventListener('input', renderTimeZones);
 
   /* ---------- validation ---------- */
 
@@ -498,17 +694,28 @@
       var parts = ['FREQ=' + freq];
       var iv = parseInt($('recur-interval').value, 10);
       if (!isNaN(iv) && iv > 1) parts.push('INTERVAL=' + iv);
-      var until = $('recur-until').value;
-      if (until) {
-        var up = parseDateInput(until);
-        if (allDay) {
-          parts.push('UNTIL=' + IcsGenerator.formatDateUTC({ year: up.year, month: up.month, day: up.day }));
+      if (freq === 'WEEKLY') {
+        /* No checked days means "weekly on the start weekday" (no BYDAY). */
+        var days = sortByday(readByday());
+        if (days.length) parts.push('BYDAY=' + days.join(','));
+      }
+      var end = $('recur-end').value;
+      if (end === 'after') {
+        var countEl = $('recur-count');
+        var count = Number.isFinite(countEl.valueAsNumber) ? countEl.valueAsNumber : parseFloat(countEl.value);
+        if (!Number.isFinite(count) || Math.floor(count) !== count || count < 1 || count > 999) {
+          errors['recur-count'] = 'Pick a whole number of occurrences (1-999).';
         } else {
-          /* End of that day in the event's zone, converted to UTC (UNTIL for a
-           * timed rule must be a UTC instant). */
-          parts.push('UNTIL=' + IcsGenerator.formatDateTimeUTC(
-            zonedTimeToDate(up.year, up.month, up.day, 23, 59, opts.timezone || 'UTC', 59)
-          ));
+          parts.push('COUNT=' + count);
+        }
+      } else if (end === 'on-date') {
+        var until = $('recur-until').value;
+        if (!until) {
+          errors['recur-until'] = 'Pick the date the recurrence ends on.';
+        } else if (startDateEl.value && until < startDateEl.value) {
+          errors['recur-until'] = 'The end date must be on or after the event start date.';
+        } else {
+          parts.push('UNTIL=' + untilFromDate(until, allDay, opts.timezone || 'UTC'));
         }
       }
       opts.rrule = parts.join(';');
@@ -579,11 +786,11 @@
     if (parts && parts.year) el.value = isoFromParts(parts);
   }
 
+  /* Membership is checked against the full zone list, never the filtered view. */
   function hasZone(tz) {
-    for (var i = 0; i < timezoneEl.options.length; i++) {
-      if (timezoneEl.options[i].value === tz) return true;
-    }
-    return false;
+    if (!tz) return false;
+    if (tz === 'UTC' || tz === localTimeZone()) return true;
+    return allTimeZones().indexOf(tz) !== -1;
   }
 
   /* The zone to show an imported instant in: the event's own zone when the
@@ -593,10 +800,24 @@
     return localTimeZone();
   }
 
-  /* Only the form's simple subset (FREQ/INTERVAL/UNTIL) is representable;
-   * anything else (COUNT, BYDAY, …) is preserved on the event but not loaded. */
+  /* The exact UNTIL token the form writes: date-only for all-day events,
+   * otherwise the end of the chosen calendar day in the event's zone. */
+  function untilFromDate(value, allDay, tz) {
+    var p = parseDateInput(value);
+    if (allDay) return IcsGenerator.formatDateUTC(p);
+    return IcsGenerator.formatDateTimeUTC(
+      zonedTimeToDate(p.year, p.month, p.day, 23, 59, tz || 'UTC', 59)
+    );
+  }
+
+  /* Only the form's simple subset is representable: FREQ, INTERVAL, a weekly
+   * BYDAY, and an end that is either UNTIL or COUNT (never both). Anything else
+   * (BYDAY on a non-weekly rule, ordinal BYDAY, …) is preserved on the event but
+   * not loaded. */
   function simpleRule(rule, allDay, tz) {
-    var out = { freq: null, interval: 1, until: '' };
+    var out = { freq: null, interval: 1, until: '', count: null, byday: null };
+    var seenUntil = false;
+    var seenCount = false;
     var parts = String(rule).split(';');
     for (var i = 0; i < parts.length; i++) {
       var kv = parts[i].split('=');
@@ -607,15 +828,33 @@
         out.freq = v;
       } else if (k === 'INTERVAL') {
         out.interval = parseInt(v, 10) || 1;
+      } else if (k === 'BYDAY') {
+        var days = parseByday(v);
+        if (!days) return null;
+        out.byday = days;
       } else if (k === 'UNTIL') {
         var u = untilToDate(v, allDay, tz);
-        if (!u) return null;
+        if (!u || untilFromDate(u, allDay, tz) !== v) return null;
         out.until = u;
+        seenUntil = true;
+      } else if (k === 'COUNT') {
+        if (!/^\d+$/.test(v)) return null;
+        var n = parseInt(v, 10);
+        /* Only counts the form can re-emit (readForm validates 1..999) count
+         * as representable; anything else is preserved via the kept-RRULE path. */
+        if (!(n >= 1 && n <= 999)) return null;
+        out.count = n;
+        seenCount = true;
       } else {
         return null;
       }
     }
-    return out.freq ? out : null;
+    if (!out.freq) return null;
+    /* UNTIL and COUNT are mutually exclusive in RFC 5545. */
+    if (seenUntil && seenCount) return null;
+    /* BYDAY only means anything on a weekly rule in this simple form. */
+    if (out.byday && out.freq !== 'WEEKLY') return null;
+    return out;
   }
 
   /* RRULE UNTIL → a value for the date input. */
@@ -814,7 +1053,7 @@
       var ep = zoneParts(end, zone);
       endDateEl.value = isoFromParts(ep);
       endTimeEl.value = pad2(ep.hour) + ':' + pad2(ep.minute);
-      timezoneEl.value = zone;
+      setTimeZoneValue(zone);
     }
     syncAllDayUI();
     rememberStartInstant();
@@ -822,7 +1061,13 @@
     var rule = ev.rrule ? simpleRule(ev.rrule, allDay, timezoneEl.value) : null;
     $('recur-freq').value = rule ? rule.freq : 'NONE';
     $('recur-interval').value = rule ? rule.interval : 1;
+    $('recur-count').value = rule && rule.count != null ? rule.count : 1;
     $('recur-until').value = rule ? rule.until : '';
+    $('recur-end').value = !rule ? 'never'
+      : (rule.count != null ? 'after' : (rule.until ? 'on-date' : 'never'));
+    /* An implicit start weekday stays implicit; only a fresh WEEKLY change
+     * defaults a checkbox, never loading or restoring the form. */
+    setByday(rule && rule.byday);
     syncRecurUI();
 
     var alarm = simpleAlarm(ev.alarms);
@@ -1270,7 +1515,7 @@
     var fields = $('event-form').querySelectorAll('input, select, textarea');
     for (var i = 0; i < fields.length; i++) {
       var el = fields[i];
-      if (!el.id || (el.closest && el.closest('#attendee-list'))) continue;
+      if (!el.id || el.id === 'timezone-filter' || (el.closest && el.closest('#attendee-list'))) continue;
       values.push({
         id: el.id,
         checked: el.type === 'checkbox' ? el.checked : null,
@@ -1314,6 +1559,12 @@
       if (rec.checked !== null) el.checked = rec.checked;
       else el.value = rec.value;
     });
+    /* The filter is view state, not event data: rebuild from whatever filter is
+     * showing and re-apply the snapshot's zone so a filtered list can't drop it. */
+    renderTimeZones();
+    var snapZone = null;
+    snap.values.forEach(function (rec) { if (rec.id === 'timezone') snapZone = rec.value; });
+    if (snapZone) setTimeZoneValue(snapZone);
     /* Visibility only: the snapshot's date values must survive byte-for-byte. */
     syncAllDayVisibility();
     syncRecurUI();
@@ -1478,11 +1729,11 @@
     /* 1. recurring standup — remind 10 min before (number trigger) */
     cal.addEvent({
       title: 'Team standup',
-      description: 'Daily sync — what I did, what I am doing, blockers.',
+      description: 'Mon/Wed/Fri sync — what I did, what I am doing, blockers.',
       location: 'Zoom',
       start: nextWeekday(1, 9, 0),
       durationMinutes: 30,
-      rrule: 'FREQ=WEEKLY',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR',
       categories: ['Work', 'Standup'],
       alarms: [{ trigger: -10 }]
     });

@@ -79,6 +79,7 @@ main {
 .btn:focus-visible,
 summary:focus-visible,
 .check input:focus-visible,
+.day-check input:focus-visible,
 .att-rsvp input:focus-visible,
 .drop-zone:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -90,6 +91,8 @@ summary:focus-visible,
 }
 
 textarea { resize: vertical; }
+/* Zone filter sits directly above the select it narrows. */
+#timezone-filter { margin-bottom: 8px; }
 .field .hint { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
 
 /* Inline validation */
@@ -166,6 +169,25 @@ textarea { resize: vertical; }
   cursor: pointer;
 }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Weekly day-of-week picker: an inline row of compact .check-style boxes. */
+.field-row .field.span-all { grid-column: 1 / -1; }
+/* Nested controls inside the Ends group sit under its select. */
+.end-sub { margin: 8px 0 0; }
+.day-picker-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.day-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.day-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  /* WCAG 2.5.8: a 24px-minimum tappable area around the 18px checkbox. */
+  min-height: 24px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+.day-check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* Organizer + attendees */
 .contact-group { border: 0; margin: 0 0 14px; padding: 0; min-width: 0; }
