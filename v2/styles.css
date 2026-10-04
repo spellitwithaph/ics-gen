@@ -85,7 +85,21 @@ main {
     margin-top: -20px;
     padding: 20px 0 12px;
     background: var(--panel);
+    flex-wrap: nowrap;
   }
+  /* Keep the buttons row single-line: at 921-940px with a classic scrollbar
+   * gutter the row was 2px too narrow and used to wrap to two lines, growing
+   * the toolbar to ~312px - past the 274px scroll-padding-top - so Shift+Tab
+   * could focus a list button hidden behind the toolbar. The negative right
+   * margin lets the row borrow the panel's right padding as headroom (the
+   * row has no background, so this is invisible and buttons keep their
+   * position); nowrap plus nowrap button labels keep the toolbar height
+   * constant. Mobile (<=920px) still wraps freely. */
+  main > .panel:nth-of-type(2) > .toolbar > .toolbar-buttons {
+    flex-wrap: nowrap;
+    margin-right: -20px;
+  }
+  main > .panel:nth-of-type(2) > .toolbar .btn { white-space: nowrap; }
 }
 
 .panel {
