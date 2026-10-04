@@ -72,6 +72,7 @@ main {
     top: 16px;
     max-height: calc(100vh - 32px);
     overflow: auto;
+    scroll-padding-top: 274px; /* 260px toolbar + 14px margin. */
   }
   /* Keep the toolbar (calendar name, buttons, count) in view while a long
    * event list scrolls inside the pinned panel. The extra top padding plus
@@ -354,6 +355,7 @@ textarea { resize: vertical; }
  * so body reserves room (padding-bottom) for it at the end of the document,
  * and the undo toast (also fixed) is raised clear of it. */
 @media (max-width: 920px) {
+  html { scroll-padding-bottom: 148px; }
   body { padding-bottom: 132px; }
   #event-form > .form-actions {
     position: fixed;
