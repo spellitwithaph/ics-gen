@@ -128,15 +128,9 @@
           <textarea id="description" rows="3" placeholder="What is this event about?"></textarea>
         </div>
 
-        <div class="field-row">
-          <div class="field">
-            <label for="location">Location</label>
-            <input id="location" type="text" placeholder="Room 42 / Zoom / Office">
-          </div>
-          <div class="field">
-            <label for="categories">Categories (comma separated)</label>
-            <input id="categories" type="text" placeholder="Work, Meeting">
-          </div>
+        <div class="field">
+          <label for="location">Location</label>
+          <input id="location" type="text" placeholder="Room 42 / Zoom / Office">
         </div>
 
         <h3 class="form-section">When</h3>
@@ -243,20 +237,50 @@
 
         <p class="hint" id="edit-kept-hint" hidden></p>
 
-        <div class="field-row">
-          <div class="field">
-            <label for="status">Event Status</label>
-            <select id="status">
-              <option value="CONFIRMED" selected>Confirmed</option>
-              <option value="TENTATIVE">Tentative</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
+        <details id="advanced-box" class="advanced">
+          <summary>More options</summary>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="status">Event Status</label>
+              <select id="status">
+                <option value="CONFIRMED" selected>Confirmed</option>
+                <option value="TENTATIVE">Tentative</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="url">Web link</label>
+              <input id="url" type="url" placeholder="https://example.com/agenda">
+            </div>
           </div>
+
           <div class="field">
-            <label for="url">Web link</label>
-            <input id="url" type="url" placeholder="https://example.com/agenda">
+            <label for="categories">Categories (comma separated)</label>
+            <input id="categories" type="text" placeholder="Work, Meeting">
           </div>
-        </div>
+
+          <fieldset class="contact-group">
+            <legend>Organizer</legend>
+            <div class="field-row">
+              <div class="field">
+                <label for="organizer-name">Name</label>
+                <input id="organizer-name" type="text" placeholder="Pat Manager">
+              </div>
+              <div class="field">
+                <label for="organizer-email">Email</label>
+                <input id="organizer-email" type="email" placeholder="pat@example.com">
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="contact-group">
+            <legend>Attendees</legend>
+            <div id="attendee-list"></div>
+            <button id="add-attendee-btn" class="btn ghost" type="button">Add attendee</button>
+            <p class="hint">Each attendee is written as an <code>ATTENDEE:mailto:</code> line.</p>
+          </fieldset>
+        </details>
 
         <div class="field-row">
           <div class="field">
@@ -282,27 +306,6 @@
             </select>
           </div>
         </div>
-
-        <fieldset class="contact-group">
-          <legend>Organizer</legend>
-          <div class="field-row">
-            <div class="field">
-              <label for="organizer-name">Name</label>
-              <input id="organizer-name" type="text" placeholder="Pat Manager">
-            </div>
-            <div class="field">
-              <label for="organizer-email">Email</label>
-              <input id="organizer-email" type="email" placeholder="pat@example.com">
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset class="contact-group">
-          <legend>Attendees</legend>
-          <div id="attendee-list"></div>
-          <button id="add-attendee-btn" class="btn ghost" type="button">Add attendee</button>
-          <p class="hint">Each attendee is written as an <code>ATTENDEE:mailto:</code> line.</p>
-        </fieldset>
 
         <div class="form-actions">
           <button id="add-btn" type="submit" class="btn primary">Add event</button>

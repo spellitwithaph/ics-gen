@@ -598,6 +598,9 @@
     if (!input) return;
     var wrap = input.closest ? input.closest('.field') : null;
     if (!wrap) return;
+    /* An error inside the collapsed "More options" box must never be invisible,
+     * so reveal the box before the caller moves focus into it. */
+    if (input.closest('#advanced-box')) $('advanced-box').open = true;
     var errId = fieldErrorId(fieldId);
     wrap.classList.add('invalid');
     input.setAttribute('aria-invalid', 'true');
@@ -662,10 +665,24 @@
     if (e.target && e.target.id) clearFieldError(e.target.id);
   });
 
+  /* A control inside a collapsed <details> is hidden and unfocusable, so open
+   * every closed ancestor before focus lands on it. */
+  function revealControl(el) {
+    var node = el.parentNode;
+    while (node && node !== document) {
+      if (node.tagName === 'DETAILS' && !node.open) node.open = true;
+      node = node.parentNode;
+    }
+  }
+
   function focusFirstInvalidField() {
     var controls = $('event-form').querySelectorAll('input, select, textarea');
     for (var i = 0; i < controls.length; i++) {
-      if (controls[i].getAttribute('aria-invalid') === 'true') { controls[i].focus(); return; }
+      if (controls[i].getAttribute('aria-invalid') === 'true') {
+        revealControl(controls[i]);
+        controls[i].focus();
+        return;
+      }
     }
   }
 
@@ -719,11 +736,29 @@
       if (input && input.id) {
         setFieldError(input.id, 'Enter a valid email address for this attendee.');
         setStatus(generic, true);
+        revealControl(input);
         input.focus();
         return true;
       }
     }
     return false;
+  }
+
+  /* ---------- advanced box ---------- */
+
+  /* Whether any control behind "More options" holds a non-default value. */
+  function advancedHasData() {
+    if ($('status').value !== 'CONFIRMED') return true;
+    if ($('url').value.trim()) return true;
+    if ($('categories').value.trim()) return true;
+    if ($('organizer-name').value.trim() || $('organizer-email').value.trim()) return true;
+    return document.querySelector('#attendee-list .attendee-row') !== null;
+  }
+
+  /* Filling the form (import, edit, samples) opens the box only when it holds
+   * something; an untouched form leaves it collapsed. */
+  function syncAdvancedBox() {
+    $('advanced-box').open = advancedHasData();
   }
 
   /* ---------- reading the form ---------- */
@@ -1233,6 +1268,7 @@
      * derive them from the values just populated. */
     syncDurationChips();
     syncFreqChips();
+    syncAdvancedBox();
   }
 
   /* ---------- rendering ---------- */
@@ -1813,6 +1849,7 @@
      * select/checkbox/date values back onto them. */
     syncDurationChips();
     syncFreqChips();
+    syncAdvancedBox();
   }
 
   /* Re-enter the edit session a snapshot captured. Targets the same event by
