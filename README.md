@@ -10,7 +10,7 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 - Import the result into Google Calendar, Outlook, Apple Calendar, Thunderbird, etc.
 
 > **Authored by:** DeepSeek V4 Flash - High - Paseo/Pi/Opencode Go  
-> **Last updated:** `2026-10-04T04:31:03Z` (ISO 8601, UTC)
+> **Last updated:** `2026-10-04T04:50:20Z` (ISO 8601, UTC)
 >
 > **Maintenance rule:** every change that produces a branch to merge must bump
 > the `Last updated` timestamp above to the current UTC date and time (ISO 8601,
@@ -20,14 +20,55 @@ A dependency-free **iCalendar (.ics) generator that runs entirely in the browser
 
 A v2 of the site is in development and served from `/v2/`, so the stable
 version can keep running untouched at the site root. `/` remains v1; `/v2/` is
-the preview where new work lands until it is promoted.
+the preview where new work lands until it is promoted. What `/v2/` adds over
+v1 (each point is verifiable in `v2/app.js`, `v2/ics.js`, and
+`v2/ics-parse.js`):
 
-The v2 libraries ship with the repo's zero-dependency Node test suite. Run it
-from the repo root:
+- **Event list** — edit events in place (the UID is kept stable across an
+  edit), duplicate them with one click, and see them sorted by start date.
+  Status messages and the event count are announced to screen readers
+  (`role="status"` / `aria-live`). Removing, clearing, and loading samples show
+  an undo toast (about 8 seconds, paused while hovered or focused) instead of
+  confirm dialogs. Escape only dismisses the toast (no undo); Ctrl/Cmd+Z
+  triggers the undo only while the toast is visible and focus is not inside an
+  editable control.
+- **Persistence** — events, the calendar name, the download filename, and the
+  VTIMEZONE preference are saved in the browser's localStorage, so events are
+  restored on reload. Saved data is treated as untrusted: a failed or
+  unreadable restore leaves the saved data untouched and pauses saving until
+  the visitor makes an explicit change to the event list (add, edit, remove,
+  clear, import, or samples — including clearing an empty list).
+- **Form** — inline per-field validation with focus moved to the first invalid
+  field; a weekly day-of-week picker plus occurrence-count and end-date
+  recurrence ends; rules the form cannot represent exactly are preserved on
+  edit (a hint names what is kept); a type-to-filter time zone picker showing
+  each zone's current UTC offset; multiple reminders per event (up to five);
+  Show-as busy/free (`TRANSP`) and priority; organizer/attendees as before.
+- **Import** — parser notes are surfaced in a collapsed list; imported events
+  can be added or replace the current list; a calendar name from
+  `X-WR-CALNAME` is picked up while the name field still shows the default.
+- **Output** — a Google Calendar link per event, optional VTIMEZONE blocks (an
+  opt-in checkbox; transitions are sampled at the distinct UTC start-years of
+  each zone's events plus one margin year when the 40-year budget permits —
+  not every year an event or its recurrence touches; when distinct years
+  exceed the budget, the earliest 39 plus the latest are kept; explicit
+  `TZID=UTC` (and UTC-instanced) events get no block — approximate for zones
+  with exotic history), and a custom download filename.
+- **Appearance** — automatic dark mode (`prefers-color-scheme`), a preview
+  wrap toggle, and a copy button on the preview.
+
+The v2 libraries ship with the repo's zero-dependency Node test suite: 105
+passing tests covering the generator (option validation, escaping and folding,
+time-zone conversion, VTIMEZONE emission, `TRANSP`/`PRIORITY`, `updateEvent`)
+and the parser (round trips, warnings, and zone fallbacks). Run it from the
+repo root:
 
 ```bash
 node v2/tests/run.js
 ```
+
+The Quick start, API reference, and remaining sections below describe the v1
+demo at the repo root unless marked otherwise.
 
 ## Is this possible on a static site? Yes.
 
@@ -144,8 +185,9 @@ Everything lives on the `IcsGenerator` global (or the Node `module.exports`).
 | --- | --- | --- |
 | `name` | `string` | Sets `X-WR-CALNAME` — the calendar title shown by Google/Apple. |
 | `desc` | `string` | Sets `X-WR-CALDESC`. |
+| `includeVtimezone` | `boolean` | **(v2)** Default `false`. Emits a best-effort `VTIMEZONE` block for every unique event `TZID` before the `VEVENT`s, so strict/offline clients can resolve the `TZID` without their own tz data. Explicit `TZID=UTC` (and UTC-instanced) events get no block. Transitions are sampled at the distinct UTC start-years of that zone's events plus one margin year when the 40-year budget permits (not every year an event or its recurrence touches); when distinct years exceed the budget, the earliest 39 plus the latest are kept. Approximate for zones with exotic history. |
 
-Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `boolean` · `clear()` · `toString()` → full `.ics` text · `.events` array.
+Methods: `addEvent(options)` → `VEvent` · `updateEvent(indexOrEvent, options)` → `VEvent | false` **(v2)** · `removeEvent(indexOrEvent)` → `boolean` · `clear()` · `toString()` → full `.ics` text · `.events` array.
 
 ### `cal.addEvent(options)`
 
@@ -167,6 +209,19 @@ Methods: `addEvent(options)` → `VEvent` · `removeEvent(indexOrEvent)` → `bo
 | `alarms` | `Array<{trigger, description?, action?}>` | | `trigger` is a minute number (`-15`) or an ISO 8601 duration string (`-PT30M`, `-P2D`, …). Each array entry emits its own `VALARM` inside that event's `VEVENT`, so every event — and every reminder of an event — is independent. `description` defaults to the event title. Any value containing control characters throws. |
 | `attendees` | `Array<{email, name?, role?, status?, rsvp?}>` | | Emitted as `ATTENDEE;CN=…;ROLE=…;PARTSTAT=…:mailto:…`. `email` is validated (non-empty local part + dotted domain, no whitespace); `name`, `role` and `status` must not contain control characters. |
 | `organizer` | `{email, name?}` | | Emitted as `ORGANIZER;CN=…:mailto:…`. `email` validated as above. |
+| `transp` | `string` | | **(v2)** `OPAQUE` (busy, the default) or `TRANSPARENT` (free) → `TRANSP`. Emitted only when set; other values throw. |
+| `priority` | `number` | | **(v2)** Integer 0–9 (1 highest, 9 lowest) → `PRIORITY`. Emitted when ≥ 1; `0`/omitted emit no line. Non-integers or values outside 0–9 throw. |
+
+### `cal.updateEvent(indexOrEvent, options)` **(v2)**
+
+Replaces the event at `indexOrEvent` (a numeric index or an existing `VEvent`)
+with a new one built from `options`, in place — the new `VEvent` takes the same
+slot, so list position is preserved. Options run through the same validation as
+`addEvent`, and the replacement is built before the calendar is touched, so
+invalid options throw without changing it. When `options.uid` is omitted, the
+previous event's uid is carried over, keeping the event's identity stable
+across regenerations. Returns the new `VEvent`, or `false` when the target does
+not exist.
 
 ### `IcsGenerator.parse(text)` / `parseEvents(text)`
 
@@ -179,8 +234,13 @@ const { calendar, events, warnings, counts } = IcsGenerator.parse(icsText);
 
 `calendar` carries `X-WR-CALNAME`/`X-WR-CALDESC`; `events` is one object per
 `VEVENT` with `start`/`end` as `Date` or `{year, month, day}`, plus `allDay`,
-`timezone`, `rrule`, `alarms`, `organizer`, `attendees`, `categories`, and an
-`unsupported` list; `warnings` explains anything dropped or approximated.
+`timezone`, `rrule`, `alarms`, `organizer`, `attendees`, `categories`, `transp`
+and `priority` **(v2)**, and an `unsupported` list; `warnings` explains anything
+dropped or approximated — an unreadable `TRANSP` or `PRIORITY` value is
+ignored with a note (`Ignored an unreadable TRANSP value.` / `Ignored an
+unreadable PRIORITY value.`). A `DTEND` that is not after `DTSTART` is kept
+rather than dropped — **(v2)** with the warning `DTEND is not after DTSTART;
+kept as-is.` (v1 keeps it silently).
 `parseEvents(text)` returns just the events. The reader handles line folding,
 quoted parameters, TEXT unescaping, `TZID` (IANA and common Windows/Outlook
 names), a `VTIMEZONE` fixed-offset fallback, `DURATION`, and all-day / floating

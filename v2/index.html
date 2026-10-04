@@ -39,15 +39,18 @@
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
   "featureList": [
     "All-day, timed and multi-day events",
-    "Recurring events (daily, weekly, monthly, yearly)",
-    "Reminders (VALARM)",
-    "Per-event reminder timing (minutes, hours, or days before the event)",
+    "Recurring events with day-of-week patterns, occurrence counts, or end dates",
+    "Up to five reminders per event (VALARM)",
     "Attendees and organizer (mailto)",
-    "URL, location, categories and status",
+    "Show as busy or free (TRANSP) and priority",
+    "Edit and duplicate events in place; date-sorted list with undo",
+    "Import existing .ics files by drop, file picker, or pasted text (add or replace)",
+    "Optional VTIMEZONE blocks for strict/offline calendar clients",
+    "Per-event Google Calendar links and custom download filenames",
+    "Events saved in the browser's localStorage — restored on reload, never uploaded",
     "RFC 5545 escaping, 75-octet line folding, UTC/TZID timestamps",
-    "Time zone selector (IANA names, defaults to your device zone)",
-    "Import existing .ics files by drop, file picker, or pasted text",
-    "Copies or downloads the .ics file; 100% client-side, no uploads"
+    "Time zone picker with type-to-filter and current UTC offsets",
+    "Automatic dark mode; copy or download the .ics — 100% client-side, no uploads"
   ]
 }
 </script>
@@ -64,12 +67,12 @@
     {
       "@type": "Question",
       "name": "Does ICS Generator upload my event data?",
-      "acceptedAnswer": { "@type": "Answer", "text": "No. The page runs 100% in your browser — nothing you type ever leaves your device. The hosted site uses cookie-free Cloudflare Web Analytics to count visits (aggregate page views, referrers, and countries); your events and form data are never collected or sent anywhere." }
+      "acceptedAnswer": { "@type": "Answer", "text": "No. The page itself uploads nothing and has no analytics beyond the cookie-free Cloudflare Web Analytics visit counter. Events are saved only in your browser's localStorage, so they survive a reload, and clearing the site's data removes them. The only way your data leaves your device is if you click an outbound link — for example the per-event Google Calendar link, which sends that event's details to Google to prefill its form — or download or share the .ics file yourself." }
     },
     {
       "@type": "Question",
       "name": "Can I create recurring events or reminders?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes — daily, weekly, monthly and yearly recurrence with optional end dates, plus reminders set per event — minutes, hours, or days before the start (VALARM) — and all-day, timed and multi-day events with attendees." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — daily, weekly, monthly, and yearly recurrence, with optional day-of-week patterns, occurrence counts, and end dates, plus reminders set per event — minutes, hours, or days before the start — and all-day, timed, and multi-day events with attendees. In one .ics file each event carries its own reminder." }
     }
   ]
 }
@@ -341,18 +344,21 @@
 
     <details class="faq-item">
       <summary>Does ICS Generator upload my event data?</summary>
-      <p>No. The page runs 100% in your browser — nothing you type ever leaves
-      your device. The hosted site uses cookie-free
-      <a href="https://developers.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">Cloudflare Web Analytics</a>
-      to count visits (aggregate page views, referrers, and countries); your
-      events and form data are never collected or sent anywhere.</p>
+      <p>No. The page itself uploads nothing and has no analytics beyond the
+      cookie-free Cloudflare Web Analytics visit counter. Events are saved only
+      in your browser's localStorage, so they survive a reload, and clearing
+      the site's data removes them. The only way your data leaves your device
+      is if you click an outbound link — for example the per-event Google
+      Calendar link, which sends that event's details to Google to prefill its
+      form — or download or share the .ics file yourself.</p>
     </details>
 
     <details class="faq-item">
       <summary>Can I create recurring events or reminders?</summary>
-      <p>Yes — daily, weekly, monthly, and yearly recurrence with optional end dates,
-      plus reminders set per event — minutes, hours, or days before the start — and
-      all-day, timed, and multi-day events with attendees. In one .ics file each event
+      <p>Yes — daily, weekly, monthly, and yearly recurrence, with optional
+      day-of-week patterns, occurrence counts, and end dates, plus reminders
+      set per event — minutes, hours, or days before the start — and all-day,
+      timed, and multi-day events with attendees. In one .ics file each event
       carries its own reminder.</p>
     </details>
   </section>
