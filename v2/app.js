@@ -1874,6 +1874,9 @@
       reminders: Array.prototype.map.call(reminderRows(), function (row) {
         return { value: row.querySelector('.reminder-value').value, unit: row.querySelector('.reminder-unit').value };
       }),
+      /* UI disclosure is not event data, but an undo should still put the box
+       * back the way the visitor had it. */
+      advancedOpen: $('advanced-box').open,
       /* Edit context travels with the draft so a samples undo can put the
        * visitor back into the same Update session, not a silent Add. */
       editingEvent: editingEvent,
@@ -1913,7 +1916,10 @@
      * select/checkbox/date values back onto them. */
     syncDurationChips();
     syncFreqChips();
-    syncAdvancedBox();
+    /* Undo restores the exact disclosure state it captured; ordinary
+     * populate/import paths keep the data-driven syncAdvancedBox(). */
+    if (typeof snap.advancedOpen === 'boolean') $('advanced-box').open = snap.advancedOpen;
+    else syncAdvancedBox();
   }
 
   /* Re-enter the edit session a snapshot captured. Targets the same event by
