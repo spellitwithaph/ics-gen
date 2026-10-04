@@ -960,3 +960,38 @@ test('VTIMEZONE: Sydney labels the lower offset STANDARD and the higher DAYLIGHT
   standard.forEach(function (c) { assert.eq(c.props.TZOFFSETTO, '+1000'); });
   daylight.forEach(function (c) { assert.eq(c.props.TZOFFSETTO, '+1100'); });
 });
+
+test('VTIMEZONE: event years beyond the old sampling cap are still emitted', function () {
+  var cal = new ICS.Calendar();
+  cal.addEvent({
+    title: 'Summer 2026',
+    start: new Date('2026-06-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'America/New_York'
+  });
+  cal.addEvent({
+    title: 'Summer 2040',
+    start: new Date('2040-06-15T14:00:00Z'),
+    durationMinutes: 60,
+    timezone: 'America/New_York'
+  });
+  cal.includeVtimezone = true;
+  var comps = vtimezoneComponents(cal.toString());
+  var starts = comps.map(function (c) { return c.props.DTSTART; });
+
+  /* Both event years are mandatory onsets; the 2041 recurrence margin fits. */
+  assert.includes(starts, '20260308T020000');
+  assert.includes(starts, '20400311T020000');
+  assert.includes(starts, '20401104T020000');
+  assert.includes(starts, '20410310T020000');
+  /* No contiguous-range sampling: 2030 is neither an event year nor the margin. */
+  assert.ok(starts.indexOf('20300310T020000') === -1,
+    'intermediate years must not be sampled just to fill the range');
+  assert.ok(starts.indexOf('20370308T020000') === -1,
+    'the block must not stop at the old 12-year truncation point');
+
+  /* Strict resolution of the 2040 June event from the block alone. */
+  var naive = Date.UTC(2040, 5, 15, 10, 0, 0);
+  assert.eq(resolveWithComponents(comps, naive), Date.UTC(2040, 5, 15, 14, 0, 0),
+    'the 2040 June event must land on EDT (-0400), not the truncated EST offset');
+});

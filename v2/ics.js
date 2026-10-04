@@ -314,11 +314,16 @@
     return transitions;
   }
 
-  /* One VTIMEZONE block for `timeZone`, covering every year its events span
-   * plus one year beyond the latest (so near-term recurrences still resolve).
-   * Sampling is capped at MAX_VTIMEZONE_YEARS years per zone to bound the size
-   * of the emitted block. */
-  var MAX_VTIMEZONE_YEARS = 12;
+  /* One VTIMEZONE block for `timeZone`. Every distinct year that actually has
+   * an event in this zone is mandatory — dropping one silently mis-resolves
+   * that year's events, so no contiguous-range sampling is used. One
+   * recurrence-margin year past the latest event is added only when it still
+   * fits the budget, so near-term recurrences keep resolving.
+   *
+   * MAX_VTIMEZONE_YEARS bounds the block size. A pathological calendar with
+   * more distinct event years than the budget keeps the first 39 years
+   * chronologically plus the LAST one, so the newest events stay correct. */
+  var MAX_VTIMEZONE_YEARS = 40;
 
   function vtimezoneLines(timeZone, years) {
     var tzid = assertTimeZone(timeZone);
@@ -326,10 +331,25 @@
       return typeof y === 'number' && isFinite(y);
     });
     if (!candidates.length) candidates = [new Date().getUTCFullYear()];
-    var firstYear = Math.min.apply(null, candidates);
-    var lastYear = Math.max.apply(null, candidates) + 1;
-    var sampled = [];
-    for (var y = firstYear; y <= lastYear && sampled.length < MAX_VTIMEZONE_YEARS; y++) sampled.push(y);
+
+    /* Distinct event years, in chronological order. */
+    var eventYears = [];
+    candidates.forEach(function (y) {
+      var year = Math.floor(y);
+      if (eventYears.indexOf(year) === -1) eventYears.push(year);
+    });
+    eventYears.sort(function (a, b) { return a - b; });
+
+    var sampled;
+    if (eventYears.length > MAX_VTIMEZONE_YEARS) {
+      /* Pathological: over budget, so keep the earliest 39 years plus the
+       * newest one — the latest events matter most and must stay correct. */
+      sampled = eventYears.slice(0, MAX_VTIMEZONE_YEARS - 1)
+        .concat(eventYears[eventYears.length - 1]);
+    } else {
+      sampled = eventYears.slice();
+      if (sampled.length < MAX_VTIMEZONE_YEARS) sampled.push(sampled[sampled.length - 1] + 1);
+    }
 
     var transitions = [];
     var byYear = {};
