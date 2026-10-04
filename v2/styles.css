@@ -322,6 +322,10 @@ textarea { resize: vertical; }
 #event-list .gcal-link:hover { color: var(--accent-strong); border-color: var(--border-strong); }
 #event-list .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
 
+/* VTIMEZONE emission toggle (preview-side option) */
+.vtimezone-toggle { margin: 4px 0 10px; font-size: 13px; font-weight: 500; align-items: flex-start; }
+.vtimezone-toggle input { margin-top: 2px; }
+
 details { margin-top: 6px; }
 summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); }
 summary:hover { color: var(--text); }

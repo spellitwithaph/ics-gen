@@ -196,6 +196,157 @@
     return new Date(ts);
   }
 
+  /* ---------- VTIMEZONE (best-effort) ---------- */
+
+  var MS_PER_DAY = 86400000;
+
+  /* UTC offset (minutes east of UTC) a zone shows at the given instant. */
+  function zoneOffsetMinutes(ts, timeZone) {
+    var p = zoneParts(new Date(ts), timeZone);
+    var asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    return Math.round((asUTC - ts) / 60000);
+  }
+
+  /* Signed ±HHMM offset token used by TZOFFSETFROM/TZOFFSETTO. */
+  function formatOffsetMinutes(mins) {
+    var sign = mins < 0 ? '-' : '+';
+    var abs = Math.abs(Math.round(mins));
+    return sign + pad2(Math.floor(abs / 60)) + pad2(abs % 60);
+  }
+
+  /* Intl's short zone name (e.g. EST/EDT) — optional, omitted when unavailable. */
+  function zoneShortName(ts, timeZone) {
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', { timeZone: timeZone, timeZoneName: 'short' })
+        .formatToParts(new Date(ts));
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].type === 'timeZoneName') return parts[i].value;
+      }
+    } catch (e) { /* zone names are best-effort only */ }
+    return null;
+  }
+
+  /*
+   * Best-effort approximation: instead of shipping a tzdata table, sample the
+   * zone's UTC offset at ~15-day steps across the year that contains the event
+   * start, then bisect each detected change down to day precision. Transition
+   * instants are therefore day-accurate, and exotic zones with many offsets are
+   * reduced to the two longest-lived ones — enough for a strict/offline client
+   * to resolve the TZID, not a byte-exact tzdata dump.
+   */
+  function zoneTransitions(timeZone, year) {
+    var start = Date.UTC(year, 0, 1);
+    var end = Date.UTC(year + 1, 0, 1);
+    var step = 15 * MS_PER_DAY;
+    var transitions = [];
+    var prevT = start;
+    var prevOff = zoneOffsetMinutes(start, timeZone);
+    var t = start;
+    while (t < end) {
+      t = Math.min(t + step, end);
+      var off = zoneOffsetMinutes(t, timeZone);
+      if (off !== prevOff) {
+        var lo = prevT;
+        var hi = t;
+        while (hi - lo > MS_PER_DAY) {
+          var mid = Math.floor((lo + hi) / 2 / 1000) * 1000;
+          if (zoneOffsetMinutes(mid, timeZone) === prevOff) lo = mid;
+          else hi = mid;
+        }
+        transitions.push({ at: hi, from: prevOff, to: off });
+        prevOff = off;
+      }
+      prevT = t;
+    }
+    return transitions;
+  }
+
+  /* Contiguous same-offset periods across the sampled year. */
+  function zonePeriods(timeZone, year) {
+    var start = Date.UTC(year, 0, 1);
+    var end = Date.UTC(year + 1, 0, 1);
+    var periods = [];
+    var cursor = start;
+    var off = zoneOffsetMinutes(start, timeZone);
+    zoneTransitions(timeZone, year).forEach(function (tr) {
+      periods.push({ start: cursor, end: tr.at, offset: off });
+      cursor = tr.at;
+      off = tr.to;
+    });
+    periods.push({ start: cursor, end: end, offset: off });
+    return periods;
+  }
+
+  /* One VTIMEZONE block for `timeZone`, covering transitions in `year`. */
+  function vtimezoneLines(timeZone, year) {
+    var tzid = assertTimeZone(timeZone);
+    var start = Date.UTC(year, 0, 1);
+    var transitions = zoneTransitions(tzid, year);
+    var lines = ['BEGIN:VTIMEZONE', 'TZID:' + escapeParam(tzid)];
+
+    /* The offset shown on Jan 1 belongs to the STANDARD component. */
+    var standardOffset = zoneOffsetMinutes(start, tzid);
+
+    if (!transitions.length) {
+      lines.push('BEGIN:STANDARD');
+      lines.push('DTSTART:19700101T000000');
+      lines.push('TZOFFSETFROM:' + formatOffsetMinutes(standardOffset));
+      lines.push('TZOFFSETTO:' + formatOffsetMinutes(standardOffset));
+      var onlyName = zoneShortName(start, tzid);
+      if (onlyName) lines.push('TZNAME:' + escapeText(onlyName));
+      lines.push('END:STANDARD');
+      lines.push('END:VTIMEZONE');
+      return lines;
+    }
+
+    /* Rank distinct offsets by how long the zone spends in them and keep the
+     * Jan-1 offset plus the longest other one (two components normally). */
+    var durations = {};
+    zonePeriods(tzid, year).forEach(function (p) {
+      durations[p.offset] = (durations[p.offset] || 0) + (p.end - p.start);
+    });
+    var ranked = Object.keys(durations).map(Number).sort(function (a, b) {
+      return durations[b] - durations[a];
+    });
+    var keep = [standardOffset];
+    for (var i = 0; i < ranked.length && keep.length < 2; i++) {
+      if (ranked[i] !== standardOffset) keep.push(ranked[i]);
+    }
+
+    function transitionInto(offset) {
+      for (var j = 0; j < transitions.length; j++) {
+        if (transitions[j].to === offset) return transitions[j];
+      }
+      return null;
+    }
+
+    function emit(type, transition, fromOffset, toOffset) {
+      lines.push('BEGIN:' + type);
+      lines.push(transition && transition.at != null
+        ? 'DTSTART:' + formatDateTimeInZone(new Date(transition.at), tzid)
+        : 'DTSTART:19700101T000000');
+      lines.push('TZOFFSETFROM:' + formatOffsetMinutes(fromOffset));
+      lines.push('TZOFFSETTO:' + formatOffsetMinutes(toOffset));
+      var name = zoneShortName(transition && transition.at != null ? transition.at : start, tzid);
+      if (name) lines.push('TZNAME:' + escapeText(name));
+      lines.push('END:' + type);
+    }
+
+    /* Emit DAYLIGHT before STANDARD, matching the usual tzdata ordering. */
+    var otherOffset = keep.length > 1 ? keep[1] : null;
+    if (otherOffset != null) {
+      var daylightTr = transitionInto(otherOffset);
+      emit('DAYLIGHT', daylightTr, daylightTr ? daylightTr.from : standardOffset, otherOffset);
+    }
+    var standardTr = transitionInto(standardOffset);
+    emit('STANDARD', standardTr,
+      standardTr ? standardTr.from : (otherOffset != null ? otherOffset : standardOffset),
+      standardOffset);
+
+    lines.push('END:VTIMEZONE');
+    return lines;
+  }
+
   function isDateParts(v) {
     return (
       v && typeof v === 'object' &&
@@ -434,10 +585,14 @@
   /*
    * Calendar — holds any number of events and renders one .ics document.
    * options: { name } sets X-WR-CALNAME (the calendar title Google/Apple show).
+   * includeVtimezone (default false) emits a best-effort VTIMEZONE block for
+   * every unique event TZID before the VEVENTs, which strict/offline clients
+   * need to resolve a TZID without consulting their own tzdata.
    */
   function Calendar(options) {
     this.options = options || {};
     this.events = [];
+    this.includeVtimezone = !!this.options.includeVtimezone;
   }
 
   Calendar.prototype.addEvent = function (options) {
@@ -489,6 +644,28 @@
     ];
     if (this.options.name) lines.push('X-WR-CALNAME:' + escapeText(this.options.name));
     if (this.options.desc) lines.push('X-WR-CALDESC:' + escapeText(this.options.desc));
+    if (this.includeVtimezone) {
+      /* One VTIMEZONE per unique TZID, keyed on the year of its first event. */
+      var seenZones = {};
+      var zoneOrder = [];
+      var zoneYear = {};
+      for (var v = 0; v < this.events.length; v++) {
+        var zoneEvent = this.events[v];
+        if (zoneEvent.allDay) continue;
+        var zone = zoneEvent.options && zoneEvent.options.timezone;
+        if (!zone || String(zone) === 'UTC') continue;
+        zone = String(zone);
+        if (seenZones[zone]) continue;
+        seenZones[zone] = true;
+        zoneOrder.push(zone);
+        zoneYear[zone] = zoneEvent.start instanceof Date
+          ? zoneEvent.start.getUTCFullYear()
+          : new Date().getUTCFullYear();
+      }
+      for (var zi = 0; zi < zoneOrder.length; zi++) {
+        lines.push.apply(lines, vtimezoneLines(zoneOrder[zi], zoneYear[zoneOrder[zi]]));
+      }
+    }
     for (var i = 0; i < this.events.length; i++) {
       lines.push.apply(lines, this.events[i].toLines());
     }

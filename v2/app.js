@@ -2243,6 +2243,29 @@
     $('save-warning').hidden = true;
   }
 
+  /* The VTIMEZONE preference is stored in its own key: the v3 events envelope
+   * (and its version) must not change just to remember a preview option. */
+  var VTIMEZONE_KEY = 'ics-gen-v2-vtimezone';
+
+  function loadVtimezonePref() {
+    var on = false;
+    try { on = localStorage.getItem(VTIMEZONE_KEY) === '1'; } catch (e) { on = false; }
+    cal.includeVtimezone = on;
+    $('vtimezone-toggle').checked = on;
+  }
+
+  function saveVtimezonePref() {
+    try {
+      localStorage.setItem(VTIMEZONE_KEY, cal.includeVtimezone ? '1' : '0');
+    } catch (e) { /* storage may be unavailable; the toggle still works this session */ }
+  }
+
+  $('vtimezone-toggle').addEventListener('change', function () {
+    cal.includeVtimezone = $('vtimezone-toggle').checked;
+    saveVtimezonePref();
+    render();
+  });
+
   function serializeDateValue(v) {
     if (isDateParts(v)) return { year: v.year, month: v.month, day: v.day };
     if (v instanceof Date) return { __type: 'date', iso: v.toISOString() };
@@ -2356,6 +2379,7 @@
   /* ---------- init ---------- */
 
   syncCalendarName();
+  loadVtimezonePref();
   defaultFormDates();
   populateTimeZones();
   syncAllDayUI();
